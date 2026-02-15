@@ -5,8 +5,14 @@ export type PagesSettings = {
 };
 
 export type CustomParameter = {
-    parameter: string | RegExp,
-    value: string
+    isRegex?: false,
+    parameter: string,
+    value: string,
+} | {
+    isRegex: true,
+    parameter: string,
+    value: string,
+    flags?: string;
 };
 
 type FormatConfVal = number | 'relative' | 'relativeUp';
@@ -16,35 +22,35 @@ export interface FormatConf {
 }
 
 export interface BaseSettings {
-    steps?: StepSettings,
-    pages?: PagesSettings,
-    syncfeatures?: boolean | string,
-    strictGherkinCompletion?: boolean,
-    strictGherkinValidation?: boolean,
-    smartSnippets?: boolean,
-    stepsInvariants?: boolean,
-    customParameters?: CustomParameter[],
-    skipDocStringsFormat?: boolean,
-    formatConfOverride?: FormatConf,
-    onTypeFormat?: boolean,
+    customParameters: CustomParameter[],
+    formatConfOverride: FormatConf,
     gherkinDefinitionPart?: string,
+    onTypeFormat: boolean,
+    pages: PagesSettings,
+    pureTextSteps: boolean
+    skipDocStringsFormat: boolean,
+    smartSnippets: boolean,
     stepRegExSymbol?: string
-    pureTextSteps?: boolean
+    steps: string | string[],
+    stepsInvariants: boolean,
+    strictGherkinCompletion: boolean,
+    strictGherkinValidation: boolean,
+    syncfeatures: boolean | string,
 }
 
 export interface Settings {
-    steps: StepSettings,
-    pages: PagesSettings,
-    syncfeatures?: boolean | string,
-    strictGherkinCompletion?: boolean,
-    strictGherkinValidation?: boolean,
-    smartSnippets?: boolean,
-    stepsInvariants?: boolean,
-    customParameters?: CustomParameter[],
-    skipDocStringsFormat?: boolean,
-    formatConfOverride?: FormatConf,
-    onTypeFormat?: boolean,
+    customParameters: CustomParameter[],
+    formatConfOverride: FormatConf,
     gherkinDefinitionPart?: string,
+    onTypeFormat: boolean,
+    pages: PagesSettings,
+    pureTextSteps: boolean
+    skipDocStringsFormat: boolean,
+    smartSnippets: boolean,
     stepRegExSymbol?: string
-    pureTextSteps?: boolean
+    steps: StepSettings,
+    stepsInvariants: boolean,
+    strictGherkinCompletion: boolean,
+    strictGherkinValidation: boolean,
+    syncfeatures: boolean | string,
 }

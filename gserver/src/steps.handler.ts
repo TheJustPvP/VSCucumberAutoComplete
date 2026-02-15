@@ -99,7 +99,7 @@ export default class StepsHandler {
         this.elements.forEach((el) => (el.count = this.getElementCount(el.id)));
     }
 
-    incrementElementCount(id: string): void {
+    incrementElementCount(id: string) {
         if (this.elemenstCountHash[id]) {
             this.elemenstCountHash[id]++;
         } else {
@@ -107,11 +107,11 @@ export default class StepsHandler {
         }
     }
 
-    getElementCount(id: string): number {
+    getElementCount(id: string) {
         return this.elemenstCountHash[id] || 0;
     }
 
-    getStepRegExp(): RegExp {
+    getStepRegExp() {
     //Actually, we dont care what the symbols are before our 'Gherkin' word
     //But they shouldn't end with letter
         const startPart = "^((?:[^'\"/]*?[^\\w])|.{0})";
@@ -200,12 +200,22 @@ export default class StepsHandler {
         return line.match(this.getGherkinRegEx());
     }
 
-    handleCustomParameters(step: string): string {
+    handleCustomParameters(step: string) {
         const { customParameters } = this.settings;
-        if (!customParameters) {
+        if (!customParameters.length) {
             return step;
         }
         customParameters.forEach((p: CustomParameter) => {
+            if (p.isRegex) {
+                const { parameter, value, flags } = p;
+                try {
+                    step = step.replace(new RegExp(parameter, flags), value);
+                    return;
+                } catch {
+                    return;
+                }
+            }
+            
             const { parameter, value } = p;
             step = step.split(parameter).join(value);
         });
@@ -228,7 +238,7 @@ export default class StepsHandler {
         [/{}/g, '.*'],
     ] as const
 
-    getRegTextForPureStep(step: string): string {
+    getRegTextForPureStep(step: string) {
         
         // Change all the special parameters
         this.specialParameters.forEach(([parameter, change]) => {
@@ -248,14 +258,14 @@ export default class StepsHandler {
         return `^${step}$`;
     }
 
-    getRegTextForStep(step: string): string {
+    getRegTextForStep(step: string) {
 
         this.specialParameters.forEach(([parameter, change]) => {
             step = step.replace(parameter, change)
         })
 
         //Optional Text
-        step = step.replace(/\(([a-z]+)\)/g, '($1)?');
+        step = step.replace(/\(([a-z\s]+)\)/g, '($1)?');
 
         //Alternative text a/b/c === (a|b|c)
         step = step.replace(
@@ -275,7 +285,7 @@ export default class StepsHandler {
         return step;
     }
 
-    getPartialRegParts(text: string): string[] {
+    getPartialRegParts(text: string) {
     // We should separate got string into the parts by space symbol
     // But we should not touch /()/ RegEx elements
         text = this.settings.pureTextSteps
@@ -319,7 +329,7 @@ export default class StepsHandler {
         return res;
     }
 
-    getPartialRegText(regText: string): string {
+    getPartialRegText(regText: string) {
     //Same with main reg, only differ is match any string that same or less that current one
         return this.getPartialRegParts(regText)
             .map((el) => `(${el}|$)`)
@@ -327,7 +337,7 @@ export default class StepsHandler {
             .replace(/^\^|^/, '^');
     }
 
-    getTextForStep(step: string): string {
+    getTextForStep(step: string) {
     //Remove all the backslashes
         step = step.replace(/\\/g, '');
 
@@ -337,7 +347,7 @@ export default class StepsHandler {
         return step;
     }
 
-    getDescForStep(step: string): string {
+    getDescForStep(step: string) {
     //Remove 'Function body' part
         step = step.replace(/\{.*/, '');
 
@@ -368,7 +378,7 @@ export default class StepsHandler {
         }
     }
 
-    getCompletionInsertText(step: string, stepPart: string): string {
+    getCompletionInsertText(step: string, stepPart: string) {
     // Return only part we need for our step
         let res = step;
         const strArray = this.getPartialRegParts(res);
@@ -591,7 +601,7 @@ export default class StepsHandler {
         }, new Array<Diagnostic>());
     }
 
-    populate(root: string, stepsPathes: StepSettings): void {
+    populate(root: string, stepsPathes: StepSettings) {
         this.elementsHash = {};
         this.elements = stepsPathes
             .reduce(
@@ -652,7 +662,7 @@ export default class StepsHandler {
         }
     }
 
-    getDefinition(line: string, text: string): Definition | null {
+    getDefinition(line: string, text: string) {
         const match = this.getGherkinMatch(line, text);
         if (!match) {
             return null;
@@ -736,7 +746,7 @@ export default class StepsHandler {
         return res.length ? res : null;
     }
 
-    getCompletionResolve(item: CompletionItem): CompletionItem {
+    getCompletionResolve(item: CompletionItem) {
         this.incrementElementCount(item.data);
         return item;
     }

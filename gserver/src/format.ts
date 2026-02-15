@@ -38,13 +38,15 @@ function findFormatConf(line: string, config: FormatConf) {
 }
 
 function findFormat(line: string, settings: Settings) {
-    const settingsFormatConf = settings.formatConfOverride || {};
+    const settingsFormatConf = settings.formatConfOverride;
+    const mergedConfig = Object
+        .entries(settingsFormatConf)
+        .reduce((acc, [key, value]) => {
+            acc[key] = value;
+            return acc;
+        }, { ...FORMAT_CONF });
     const clearLine = line.trim();
-
-    // First, look to the settings config and than to the defaults
-    const settingsRes = findFormatConf(clearLine, settingsFormatConf);
-    if (settingsRes) return settingsRes;
-    return findFormatConf(clearLine, FORMAT_CONF);
+    return findFormatConf(clearLine, mergedConfig);
 }
 
 export function clearText(text: string) {

@@ -1,10 +1,12 @@
 import StepsHandler from '../src/steps.handler';
 import { GherkinType } from '../src/gherkin';
 import { getFileContent } from '../src/util';
+import { defaultSettings } from './data/defaultSettings';
+import { Location } from 'vscode-languageserver';
 
 const settings = {
+  ...defaultSettings,
   steps: ['/data/steps/test.steps*.js'],
-  pages: {},
   syncfeatures: '/data/features/test.feature',
   smartSnippets: true,
   stepsInvariants: true,
@@ -15,8 +17,20 @@ const settings = {
       value: '([a-zA-Z0-9_-]+ dictionary|"[^"]*")',
     },
     {
-      parameter: /\{a.*\}/,
+      parameter: '{a.*}',
       value: 'aa',
+      isRegex: true,
+    },
+    {
+      parameter: '{c.*?}',
+      value: 'cc',
+      isRegex: true,
+      flags: 'g',
+    },
+    {
+      parameter: '{d.*?}',
+      value: 'dd',
+      isRegex: true,
     },
   ],
 };
@@ -137,8 +151,10 @@ describe('handleCustomParameters', () => {
         'I use ${dictionaryObject} and ${dictionaryObject}',
         'I use ([a-zA-Z0-9_-]+ dictionary|"[^"]*") and ([a-zA-Z0-9_-]+ dictionary|"[^"]*")',
       ],
-      ['I use {aTest} parameter', 'I use aa parameter'],
+      ['I use {aTest} parameter {aTest}', 'I use aa'],
       ['I use {bTest} parameter', 'I use {bTest} parameter'],
+      ['I use {cTest} parameter {cTest}', 'I use cc parameter cc'],
+      ['I use {dTest} parameter {dTest}', 'I use dd parameter {dTest}'],
     ];
     data.forEach((d) => {
       expect(s.handleCustomParameters(d[0])).toStrictEqual(d[1]);
@@ -160,6 +176,7 @@ describe('getRegTextForStep', () => {
       ['I use {string}', "I use (\"|')[^\\1]*\\1"],
       ['I use {}', 'I use .*'],
       ['I have 1 cucumber(s) in my belly', 'I have 1 cucumber(s)? in my belly'],
+      ['I have( no) cucumbers in my belly', 'I have( no)? cucumbers in my belly'],
       [
         'I have cucumbers in my belly/stomach',
         'I have cucumbers in my (belly|stomach)',
@@ -202,7 +219,7 @@ describe('getRegTextForStep', () => {
 
 describe('getPartialRegParts', () => {
   const data = 'I do (a| ( b)) and (c | d) and "(.*)"$';
-  const res = ['I', 'do', '(a| ( b))', 'and', '(c | d)', 'and', '"(.*)"$'];
+  const res = ['I', 'do', '(a| ( b)?)', 'and', '(c | d)', 'and', '"(.*)"$'];
   it(`should correctly parse "${data}" string into parts`, () => {
     expect(s.getPartialRegParts(data)).toStrictEqual(res);
   });
@@ -235,7 +252,7 @@ describe('constructor', () => {
       '/^(^I|$)( |$)(do|$)( |$)(something$|$)/'
     );
     expect(firstElement).toHaveProperty('text', 'I do something');
-    expect(firstElement.def['uri']).toContain('test.steps.js');
+    expect(([] as Location[]).concat(firstElement.def)[0]['uri']).toContain('test.steps.js');
   });
   it('should set correct names to the invariants steps', () => {
     expect(e[2]).toHaveProperty('text', 'I say a');
@@ -277,9 +294,8 @@ describe('validateConfiguration', () => {
 
 describe('Documentation parser', () => {
   const sDocumentation = new StepsHandler(__dirname, {
+    ...defaultSettings,
     steps: ['/data/steps/test.documentation*.js'],
-    pages: {},
-    customParameters: [],
   });
 
   it('should extract JSDOC properties when available', () => {

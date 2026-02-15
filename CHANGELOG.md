@@ -1,5 +1,18 @@
+## 3.1.0
+* Extension updates:
+1. Fixed error with space in the optional text
+2. Added `isRegex` for `cucumberautocomplete.customParameters` to treat `parameter` as a regular-expression pattern string. Added optional `flags` for regexp-based custom parameters (for example, use `g` for global replacement).
+
+* Development Tech Debt updates:
+1. Corrected options default values, handling and typings.
+
+* Full list of features, improvements, and bug fixes can be found [here](https://github.com/alexkrechik/VSCucumberAutoComplete/issues?q=milestone%3A3.1.0).
+
+
 ## 3.0.5
 * Used absolute pathes for the glob sync to fix "Go To Definition" problem on some Window PCs
+
+## 3.0.1
 * Fixed regression issue with non-English languages formatting
 * Fixed wrong format selecting in case of no semicolon in the settings
 
@@ -10,7 +23,7 @@
 3. Improved table pipes formatting.
 4. Added an icon for feature files.
 
-* Development Tech Dept updates:
+* Development Tech Debt updates:
 1. Upgraded to the latest versions of all VSCode libraries, enhancing extension speed, security, and the development/debugging experience.
 2. Upgraded to the latest version of TypeScript, making the application more error-resistant due to improved typings.
 3. Transitioned from Chai+Mocha to Jest.

@@ -1,26 +1,25 @@
 import { format, clearText } from '../src/format';
-import { Settings } from '../src/types';
 import { getFileContent } from '../src/util';
+import { defaultSettings } from './data/defaultSettings';
 
-const generalSettings: Settings = {
-  steps: [],
-  pages: {},
+const generalSettings = {
+  ...defaultSettings,
   skipDocStringsFormat: true,
   formatConfOverride: {
     But: 3,
     And: 'relativeUp',
     SomeTestKey: 12,
-    'Scenario Outline': 0,
-    // 'asdasd' as value of '#' in theory could be passed
-    // because not strong typing for theVsCode settings
+    'Scenario Outline:': 0,
+    // As used could pass any value via the settings,
+    // Check that it will not brake formatting in case of wrong value
     '#': 'asdasd' as any,
+    // Also, check case with the wrong key
     Wenn: 2,
   },
 };
 
 const ruleSettings = {
-  steps: [],
-  pages: {},
+  ...defaultSettings,
 };
 
 describe('format', () => {
