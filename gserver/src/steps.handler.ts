@@ -206,6 +206,16 @@ export default class StepsHandler {
             return step;
         }
         customParameters.forEach((p: CustomParameter) => {
+            if (p.isRegexp) {
+                const { parameter, value, flags } = p;
+                try {
+                    step = step.replace(new RegExp(parameter, flags), value);
+                    return;
+                } catch {
+                    return;
+                }
+            }
+            
             const { parameter, value } = p;
             step = step.split(parameter).join(value);
         });
