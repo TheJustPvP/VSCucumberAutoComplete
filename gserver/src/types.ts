@@ -5,11 +5,11 @@ export type PagesSettings = {
 };
 
 export type CustomParameter = {
-    isRegexp?: false,
+    isRegex?: false,
     parameter: string,
     value: string,
 } | {
-    isRegexp: true,
+    isRegex: true,
     parameter: string,
     value: string,
     flags?: string;

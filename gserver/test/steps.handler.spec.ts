@@ -2,6 +2,7 @@ import StepsHandler from '../src/steps.handler';
 import { GherkinType } from '../src/gherkin';
 import { getFileContent } from '../src/util';
 import { defaultSettings } from './data/defaultSettings';
+import { Location } from 'vscode-languageserver';
 
 const settings = {
   ...defaultSettings,
@@ -18,18 +19,18 @@ const settings = {
     {
       parameter: '{a.*}',
       value: 'aa',
-      isRegexp: true,
+      isRegex: true,
     },
     {
       parameter: '{c.*?}',
       value: 'cc',
-      isRegexp: true,
+      isRegex: true,
       flags: 'g',
     },
     {
       parameter: '{d.*?}',
       value: 'dd',
-      isRegexp: true,
+      isRegex: true,
     },
   ],
 };
@@ -251,7 +252,7 @@ describe('constructor', () => {
       '/^(^I|$)( |$)(do|$)( |$)(something$|$)/'
     );
     expect(firstElement).toHaveProperty('text', 'I do something');
-    expect(firstElement.def['uri']).toContain('test.steps.js');
+    expect(([] as Location[]).concat(firstElement.def)[0]['uri']).toContain('test.steps.js');
   });
   it('should set correct names to the invariants steps', () => {
     expect(e[2]).toHaveProperty('text', 'I say a');

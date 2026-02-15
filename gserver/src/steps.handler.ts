@@ -206,7 +206,7 @@ export default class StepsHandler {
             return step;
         }
         customParameters.forEach((p: CustomParameter) => {
-            if (p.isRegexp) {
+            if (p.isRegex) {
                 const { parameter, value, flags } = p;
                 try {
                     step = step.replace(new RegExp(parameter, flags), value);

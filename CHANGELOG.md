@@ -1,10 +1,13 @@
 ## 3.1.0
 * Extension updates:
 1. Fixed error with space in the optional text
-2. Added `isRegexp` for `cucumberautocomplete.customParameters` to treat `parameter` as a regular-expression pattern string. Added optional `flags` for regexp-based custom parameters (for example, use `g` for global replacement).
+2. Added `isRegex` for `cucumberautocomplete.customParameters` to treat `parameter` as a regular-expression pattern string. Added optional `flags` for regexp-based custom parameters (for example, use `g` for global replacement).
 
 * Development Tech Debt updates:
 1. Corrected options default values, handling and typings.
+
+* Full list of features, improvements, and bug fixes can be found [here](https://github.com/alexkrechik/VSCucumberAutoComplete/issues?q=milestone%3A3.1.0).
+
 
 ## 3.0.5
 * Used absolute pathes for the glob sync to fix "Go To Definition" problem on some Window PCs
