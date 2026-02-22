@@ -62,8 +62,9 @@ This option could speed up adding new steps up to several times. Try it ;)
 
 **`cucumberautocomplete.stepsInvariants`** - Show all the 'or' step parts as separate suggestions (for ex. show `I use a` and `I use b` step suggestions for the `Given(/I use (a|b)/)` step. It could also help to speed up new steps addition.
 
-**`cucumberautocomplete.customParameters`** - Change some steps RegEx parts depending on array of 'parameter' - 'value' key pairs. Parameter could be string or RegEx object.
-This setting will be applied before getting the steps.
+**`cucumberautocomplete.customParameters`** - Change some steps RegEx parts depending on array of 'parameter' - 'value' key pairs. Parameter could be string or regular expression. Whether 'parameter' is interpreted as a string or a regular expression is 
+controlled by 'isRegex' option.
+This setting will be be applied before getting the steps.
 For ex. to get step from the py expression `@given(u'I do something')` we could use the next parameters:
 ```
 "cucumberautocomplete.customParameters": [
@@ -148,8 +149,10 @@ By default, all the `' ' "` symbols will be used to define the start and the end
             "value":"(a|b)"
         },
         {
-            "parameter":/\{a.*\}/,
-            "value":"a"
+            "parameter":"\\{a.*\\}",
+            "value":"a",
+            "isRegex": true,
+            "flags": "gi",
         },
     ],
     "cucumberautocomplete.pages": {

@@ -5,8 +5,14 @@ export type PagesSettings = {
 };
 
 export type CustomParameter = {
-    parameter: string | RegExp,
-    value: string
+    isRegex?: false,
+    parameter: string,
+    value: string,
+} | {
+    isRegex: true,
+    parameter: string,
+    value: string,
+    flags?: string;
 };
 
 type FormatConfVal = number | 'relative' | 'relativeUp';

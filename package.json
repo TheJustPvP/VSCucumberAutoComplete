@@ -1,6 +1,6 @@
 {
   "name": "cucumberautocomplete",
-  "version": "3.0.5",
+  "version": "3.1.0",
   "publisher": "alexkrechik",
   "author": "Alexander Krechik",
   "license": "MIT",
@@ -124,7 +124,7 @@
           "default": false
         },
         "cucumberautocomplete.customParameters": {
-          "description": "Change some steps RegEx parts depending on array of 'parameter' - 'value' key pairs. Parameter could be string or RegEx object",
+          "description": "Change step RegEx parts using 'parameter'/'value' pairs. Set 'isRegex': true to interpret 'parameter' as a regular expression string (optional 'flags').",
           "type": "array",
           "required": false,
           "default": []

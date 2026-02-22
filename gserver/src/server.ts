@@ -159,7 +159,7 @@ function watchStepsFiles(settings: Settings) {
 function getSettingsFromBase(baseSettings: BaseSettings) {
     const settings: Settings = {
         ...baseSettings,
-        steps: new Array<string>().concat(baseSettings.steps),
+        steps: new Array<string>().concat(baseSettings.steps ?? []),
     };
     return settings;
 }

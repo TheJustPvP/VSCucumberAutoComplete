@@ -44,7 +44,7 @@ function findFormat(line: string, settings: Settings) {
         .reduce((acc, [key, value]) => {
             acc[key] = value;
             return acc;
-        }, FORMAT_CONF);
+        }, { ...FORMAT_CONF });
     const clearLine = line.trim();
     return findFormatConf(clearLine, mergedConfig);
 }
