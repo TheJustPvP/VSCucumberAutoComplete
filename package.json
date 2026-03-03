@@ -66,10 +66,10 @@
         }
       }
     ],
-    "snippets": [
+    "commands": [
       {
-        "language": "feature",
-        "path": "./snippets.json"
+        "command": "cucumberautocomplete.toggleExportScenarios",
+        "title": "Cucumber: Toggle Export Scenarios"
       }
     ],
     "configuration": {
@@ -147,6 +147,12 @@
           "required": false,
           "default": false
         },
+        "cucumberautocomplete.includeExportScenarios": {
+          "description": "Parse @ExportScenarios feature files from workspace and use scenario names as callable steps.",
+          "type": "boolean",
+          "required": false,
+          "default": false
+        },
         "cucumberautocomplete.gherkinDefinitionPart": {
           "description": "Provide step definition name part of regex(ex. '@(given|when|then|step)\\(' in case of python-like steps. Please ensure, that they are placed in regex match '()' braces",
           "type": "string",
@@ -162,6 +168,15 @@
           "type": "boolean",
           "required": false,
           "default": false
+        },
+        "cucumberautocomplete.vaStepsJson": {
+          "description": "Path or array of paths to JSON files with external steps catalog (hybrid mode). JSON supports string[] or { text, documentation? }[] entries.",
+          "type": [
+            "array",
+            "string"
+          ],
+          "required": false,
+          "default": []
         }
       }
     }

@@ -5,6 +5,7 @@ import { CustomParameter, PagesSettings } from '../../src/types';
 export const defaultSettings = {
   customParameters: new Array<CustomParameter>(),
   formatConfOverride: {},
+  includeExportScenarios: false,
   onTypeFormat: false,
   pages: {} as PagesSettings,
   pureTextSteps: false,
@@ -15,4 +16,5 @@ export const defaultSettings = {
   strictGherkinCompletion: false,
   strictGherkinValidation: false,
   syncfeatures: 'test/features/*.feature',
+  vaStepsJson: [],
 }

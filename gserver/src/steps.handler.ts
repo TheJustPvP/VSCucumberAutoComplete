@@ -38,6 +38,7 @@ export type Step = {
   reg: RegExp;
   partialReg: RegExp;
   text: string;
+  pureText: boolean;
   desc: string;
   def: Definition;
   count: number;
@@ -52,6 +53,16 @@ export type StepsCountHash = {
 interface JSDocComments {
   [key: number]: string;
 }
+
+type ExternalStepEntry = string | {
+  text: string;
+  documentation?: string;
+};
+
+type StepBuildOptions = {
+  forcePureText?: boolean;
+  vaParameterizeQuotes?: boolean;
+};
 
 export default class StepsHandler {
     elements: Step[] = [];
@@ -74,11 +85,22 @@ export default class StepsHandler {
     }
 
     getGherkinRegEx() {
-        return new RegExp(`^(\\s*)(${allGherkinWords})(\\s+)(.*)`);
+        return new RegExp(`^(\\s*)(${allGherkinWords})(\\s+)(.*)`, 'i');
     }
 
     getElements(): Step[] {
         return this.elements;
+    }
+
+    isAbsoluteGlobPath(path: string) {
+        return (
+            /^[a-zA-Z]:[\\/]/.test(path) ||
+            path.startsWith('\\\\')
+        );
+    }
+
+    resolveGlobPath(root: string, path: string) {
+        return this.isAbsoluteGlobPath(path) ? path : `${root}/${path}`;
     }
 
     setElementsHash(path: string): void {
@@ -258,6 +280,18 @@ export default class StepsHandler {
         return `^${step}$`;
     }
 
+    getRegTextForVAPureStep(step: string) {
+        const token = '__VA_QUOTED_PARAM__';
+        step = step.replace(/"[^"\r\n]*"|'[^'\r\n]*'/g, token);
+        step = escaprRegExpForPureText(step);
+        const escapedToken = escaprRegExpForPureText(token);
+        step = step.replace(
+            new RegExp(escapedToken, 'g'),
+            '(?:"|\')[^"\'\\r\\n]*(?:"|\')'
+        );
+        return `^${step}$`;
+    }
+
     getRegTextForStep(step: string) {
 
         this.specialParameters.forEach(([parameter, change]) => {
@@ -378,7 +412,7 @@ export default class StepsHandler {
         }
     }
 
-    getCompletionInsertText(step: string, stepPart: string) {
+    getCompletionInsertText(step: string, stepPart: string, pureText?: boolean) {
     // Return only part we need for our step
         let res = step;
         const strArray = this.getPartialRegParts(res);
@@ -422,7 +456,7 @@ export default class StepsHandler {
             res = res.replace(/"\[\^"\]\+"/g, '""');
         }
 
-        if (this.settings.pureTextSteps) {
+        if (this.settings.pureTextSteps || pureText) {
             // Replace all the escape chars for now
             res = res.replace(/\\/g, '');
             // Also remove start and end of the string - we don't need them in the completion
@@ -454,8 +488,11 @@ export default class StepsHandler {
         stepPart: string,
         def: Location,
         gherkin: GherkinType,
-        comments: JSDocComments
+        comments: JSDocComments,
+        options?: StepBuildOptions
     ): Step[] {
+        const forcePureText = !!options?.forcePureText;
+        const vaParameterizeQuotes = !!options?.vaParameterizeQuotes;
         const stepsVariants = this.settings.stepsInvariants
             ? this.getStepTextInvariants(stepPart)
             : [stepPart];
@@ -468,8 +505,10 @@ export default class StepsHandler {
             .filter((step) => {
                 //Filter invalid long regular expressions
                 try {
-                    const regText = this.settings.pureTextSteps
-                        ? this.getRegTextForPureStep(step)
+                    const regText = (this.settings.pureTextSteps || forcePureText)
+                        ? (vaParameterizeQuotes
+                            ? this.getRegTextForVAPureStep(step)
+                            : this.getRegTextForPureStep(step))
                         : this.getRegTextForStep(step);
                     new RegExp(regText);
                     return true;
@@ -479,20 +518,22 @@ export default class StepsHandler {
                 }
             })
             .map((step) => {
-                const regText = this.settings.pureTextSteps
-                    ? this.getRegTextForPureStep(step)
+                const regText = (this.settings.pureTextSteps || forcePureText)
+                    ? (vaParameterizeQuotes
+                        ? this.getRegTextForVAPureStep(step)
+                        : this.getRegTextForPureStep(step))
                     : this.getRegTextForStep(step);
-                const reg = new RegExp(regText);
+                const reg = new RegExp(regText, 'i');
                 let partialReg;
                 // Use long regular expression in case of error
                 try {
-                    partialReg = new RegExp(this.getPartialRegText(step));
+                    partialReg = new RegExp(this.getPartialRegText(step), 'i');
                 } catch (err) {
                     // Todo - show some warning
                     partialReg = reg;
                 }
                 //Todo we should store full value here
-                const text = this.settings.pureTextSteps
+                const text = (this.settings.pureTextSteps || forcePureText)
                     ? step
                     : this.getTextForStep(step);
                 const id = 'step' + getMD5Id(text);
@@ -502,6 +543,7 @@ export default class StepsHandler {
                     reg,
                     partialReg,
                     text,
+                    pureText: this.settings.pureTextSteps || !!forcePureText,
                     desc,
                     def,
                     count,
@@ -535,6 +577,10 @@ export default class StepsHandler {
     }
 
     getFileSteps(filePath: string) {
+        if (/\.bsl$/i.test(filePath)) {
+            return this.getBSLFileSteps(filePath);
+        }
+
         const fileContent = getFileContent(filePath);
         const fileComments = this.getMultiLineComments(fileContent);
         const definitionFile = clearComments(fileContent);
@@ -577,13 +623,115 @@ export default class StepsHandler {
             }, new Array<Step>());
     }
 
+    getBSLFileSteps(filePath: string) {
+        const fileContent = getFileContent(filePath);
+        const lines = fileContent.split(/\r?\n/g);
+        const comments = {} as JSDocComments;
+        const commentDeclaredSteps = lines.reduce((steps, line, lineIndex) => {
+            const commentMatch = line.match(/^\s*\/\/\s*(.+?)\s*$/);
+            if (!commentMatch) {
+                return steps;
+            }
+
+            const stepLine = commentMatch[1];
+            const gherkinMatch = this.getGherkinMatch(stepLine, fileContent);
+            if (!gherkinMatch) {
+                return steps;
+            }
+
+            // Vanessa steps are declared as `// <step text>` and usually followed by `//@StepAlias(...)`.
+            const nextNonEmptyLine = lines
+                .slice(lineIndex + 1)
+                .find((l) => l.trim().length > 0);
+            if (!nextNonEmptyLine || !/^\s*\/\/\s*@/.test(nextNonEmptyLine)) {
+                return steps;
+            }
+
+            const [, beforeGherkin, gherkinWord, , stepPart] = gherkinMatch;
+            // Filter noisy "technical" steps like `И "Истина" тогда`.
+            if (/^\s*['"]/.test(stepPart)) {
+                return steps;
+            }
+            const gherkin = getGherkinTypeLower(gherkinWord);
+            const commentPrefixMatch = line.match(/^(\s*\/\/\s*)/);
+            const commentPrefixLength = commentPrefixMatch ? commentPrefixMatch[1].length : 0;
+            const pos = Position.create(
+                lineIndex,
+                commentPrefixLength + beforeGherkin.length
+            );
+            const def = Location.create(
+                getOSPath(filePath),
+                Range.create(pos, pos)
+            );
+
+            return steps.concat(
+                this.getSteps(stepLine, stepPart, def, gherkin, comments, {
+                    forcePureText: true,
+                    vaParameterizeQuotes: true,
+                })
+            );
+        }, new Array<Step>());
+
+        const addStepDeclaredSteps = this.getBSLAddStepCalls(filePath, fileContent, comments);
+
+        return commentDeclaredSteps.concat(addStepDeclaredSteps);
+    }
+
+    getBSLAddStepCalls(filePath: string, fileContent: string, comments: JSDocComments) {
+        const callsRegex = /ДобавитьШагВМассивТестов\s*\(([\s\S]*?)\)\s*;/gi;
+        const quotedRegex = /"((?:""|[^"])*)"/g;
+        const steps = new Array<Step>();
+        let callMatch: RegExpExecArray | null;
+
+        while ((callMatch = callsRegex.exec(fileContent)) !== null) {
+            const argsBlock = callMatch[1];
+            const quotedArgs = Array.from(argsBlock.matchAll(quotedRegex)).map(
+                (m) => m[1].replace(/""/g, '"')
+            );
+            // Typical VA format:
+            // ДобавитьШагВМассивТестов(..., "Snippet", "Procedure", "Gherkin text", ...)
+            const stepLine = quotedArgs[2];
+            if (!stepLine) {
+                continue;
+            }
+
+            const gherkinMatch = this.getGherkinMatch(stepLine, fileContent);
+            if (!gherkinMatch) {
+                continue;
+            }
+
+            const [, beforeGherkin, gherkinWord, , stepPart] = gherkinMatch;
+            if (/^\s*['"]/.test(stepPart)) {
+                continue;
+            }
+            const gherkin = getGherkinTypeLower(gherkinWord);
+            const lineIndex = fileContent
+                .slice(0, callMatch.index)
+                .split(/\r?\n/g).length - 1;
+            const def = Location.create(
+                getOSPath(filePath),
+                Range.create(
+                    Position.create(lineIndex, beforeGherkin.length),
+                    Position.create(lineIndex, beforeGherkin.length)
+                )
+            );
+
+            steps.push(...this.getSteps(stepLine, stepPart, def, gherkin, comments, {
+                forcePureText: true,
+                vaParameterizeQuotes: true,
+            }));
+        }
+
+        return steps;
+    }
+
     validateConfiguration(
         settingsFile: string,
         stepsPathes: StepSettings,
         workSpaceRoot: string
     ) {
         return stepsPathes.reduce((res, path) => {
-            const files = glob.sync(path);
+            const files = glob.sync(this.resolveGlobPath(workSpaceRoot, path));
             if (!files.length) {
                 const searchTerm = path.replace(workSpaceRoot + '/', '');
                 const range = getTextRange(
@@ -606,7 +754,7 @@ export default class StepsHandler {
         this.elements = stepsPathes
             .reduce(
                 (files, path) =>
-                    files.concat(glob.sync(root + '/' + path, { absolute: true })),
+                    files.concat(glob.sync(this.resolveGlobPath(root, path), { absolute: true })),
                 new Array<string>()
             )
             .reduce(
@@ -622,16 +770,182 @@ export default class StepsHandler {
                     ),
                 new Array<Step>()
             );
+
+        if (this.settings.includeExportScenarios) {
+            // Include export scenarios from workspace feature files (VA style).
+            this.getExportScenarioSteps(root).forEach((step) => {
+                if (!this.elementsHash[step.id]) {
+                    this.elements.push(step);
+                    this.elementsHash[step.id] = true;
+                }
+            });
+        }
+
+        this.getExternalJsonSteps(root).forEach((step) => {
+            if (!this.elementsHash[step.id]) {
+                this.elements.push(step);
+                this.elementsHash[step.id] = true;
+            }
+        });
+    }
+
+    getExternalJsonSteps(root: string) {
+        const jsonPaths = this.settings.vaStepsJson || [];
+        return jsonPaths.reduce((res, configuredPath) => {
+            const path = this.resolveGlobPath(root, configuredPath);
+            const files = glob.sync(path, { absolute: true });
+            files.forEach((filePath) => {
+                const content = getFileContent(filePath);
+                if (!content) {
+                    return;
+                }
+                let parsed: ExternalStepEntry[];
+                try {
+                    const json = JSON.parse(content);
+                    parsed = Array.isArray(json) ? json : [];
+                } catch {
+                    return;
+                }
+
+                parsed.forEach((entry, i) => {
+                    const text = typeof entry === 'string' ? entry : entry.text;
+                    const doc = typeof entry === 'string' ? undefined : entry.documentation;
+                    if (!text || !text.trim()) {
+                        return;
+                    }
+                    const gherkinMatch = this.getGherkinMatch(text, content);
+                    const pos = Position.create(i, 0);
+                    const def = Location.create(
+                        getOSPath(filePath),
+                        Range.create(pos, pos)
+                    );
+                    let steps: Step[];
+                    if (gherkinMatch) {
+                        const [, , gherkinWord, , stepPart] = gherkinMatch;
+                        steps = this.getSteps(
+                            text,
+                            stepPart,
+                            def,
+                            getGherkinTypeLower(gherkinWord),
+                            {},
+                            {
+                                forcePureText: true,
+                                vaParameterizeQuotes: true,
+                            }
+                        );
+                    } else {
+                        steps = this.getSteps(text, text, def, GherkinType.Other, {}, {
+                            forcePureText: true,
+                            vaParameterizeQuotes: true,
+                        });
+                    }
+                    res.push(
+                        ...steps.map((step) => ({
+                            ...step,
+                            documentation: doc || step.documentation,
+                        }))
+                    );
+                });
+            });
+            return res;
+        }, new Array<Step>());
+    }
+
+    getExportScenarioSteps(root: string) {
+        const files = glob.sync(`${root}/**/*.feature`, { absolute: true });
+        return files.reduce((res, filePath) => {
+            const content = getFileContent(filePath);
+            const lines = content.split(/\r?\n/g);
+            const hasExportTag = lines.some((l) => /^\s*@exportscenarios\s*$/i.test(l));
+            if (!hasExportTag) {
+                return res;
+            }
+
+            const scenarioHeaderReg = /^\s*(?:Сценарий|Scenario|Структура сценария):\s*(.+?)\s*$/i;
+            for (let i = 0; i < lines.length; i++) {
+                const headerMatch = lines[i].match(scenarioHeaderReg);
+                if (!headerMatch) {
+                    continue;
+                }
+
+                const scenarioName = headerMatch[1];
+                const body = [] as string[];
+                for (let j = i + 1; j < lines.length; j++) {
+                    if (
+                        lines[j].match(scenarioHeaderReg) ||
+                        lines[j].match(/^\s*@(?!@)/)
+                    ) {
+                        break;
+                    }
+                    body.push(lines[j]);
+                }
+
+                const pos = Position.create(i, 0);
+                const def = Location.create(
+                    getOSPath(filePath),
+                    Range.create(pos, pos)
+                );
+                const steps = this.getSteps(
+                    scenarioName,
+                    scenarioName,
+                    def,
+                    GherkinType.Given,
+                    {},
+                    {
+                        forcePureText: true,
+                    }
+                ).map((step) => ({
+                    ...step,
+                    documentation: body.join('\n').trim() || scenarioName,
+                }));
+                res = res.concat(steps);
+            }
+
+            return res;
+        }, new Array<Step>());
     }
 
     getStepByText(text: string, gherkin?: GherkinType) {
+        const normalizedText = text.replace(/'([^'\r\n]*)'/g, '"$1"');
         return this.elements.find(
             (s) => {
                 const isGherkinOk = gherkin !== undefined ? s.gherkin === gherkin : true;
-                const isStepOk = s.reg.test(text);
+                const isStepOk = s.reg.test(text) || s.reg.test(normalizedText);
                 return isGherkinOk && isStepOk;
             }
         );
+    }
+
+    isVALikeStep(step: Step) {
+        const uri = ([] as Location[]).concat(step.def)[0]?.uri?.toLowerCase() || '';
+        return uri.endsWith('.bsl') || uri.endsWith('.json');
+    }
+
+    getComparableWords(text: string) {
+        return text
+            .toLowerCase()
+            .replace(/"[^"\r\n]*"|'[^'\r\n]*'/g, '')
+            .split(/\s+/)
+            .filter(Boolean);
+    }
+
+    hasRelaxedVAPrefixMatch(text: string, gherkin?: GherkinType) {
+        const words = this.getComparableWords(text);
+        if (words.length < 2) {
+            return false;
+        }
+        return this.elements.some((s) => {
+            if (!this.isVALikeStep(s)) {
+                return false;
+            }
+            if (gherkin !== undefined && s.gherkin !== gherkin) {
+                return false;
+            }
+            const stepWords = this.getComparableWords(s.text);
+            return stepWords.length >= 2 &&
+                stepWords[0] === words[0] &&
+                stepWords[1] === words[1];
+        });
     }
 
     validate(line: string, lineNum: number, text: string) {
@@ -648,6 +962,10 @@ export default class StepsHandler {
             : undefined;
         const step = this.getStepByText(match[4], gherkinWord);
         if (step) {
+            return null;
+        } else if (this.hasRelaxedVAPrefixMatch(match[4], gherkinWord)) {
+            // In VA, many steps are templates with runtime parameters,
+            // so exact text match is often too strict for validation.
             return null;
         } else {
             return {
@@ -669,6 +987,15 @@ export default class StepsHandler {
         }
         const step = this.getStepByText(match[4]);
         return step ? step.def : null;
+    }
+
+    getHover(line: string, text: string) {
+        const match = this.getGherkinMatch(line, text);
+        if (!match) {
+            return null;
+        }
+        const step = this.getStepByText(match[4]);
+        return step ? step.documentation : null;
     }
 
     getStrictGherkinType(gherkinPart: string, lineNumber: number, text: string) {
@@ -730,7 +1057,11 @@ export default class StepsHandler {
                 }
             })
         //Current string without last word should partially match our regexp
-            .filter((step) => step.partialReg.test(stepPart))
+            .filter((step) =>
+                step.partialReg.test(stepPart) ||
+                step.partialReg.test(stepPart.replace(/'([^'\r\n]*)'/g, '"$1"'))
+            )
+            .filter((step) => !/^\s*['"]/.test(step.text))
         //We got all the steps we need so we could make completions from them
             .map((step) => {
                 return {
@@ -739,7 +1070,7 @@ export default class StepsHandler {
                     data: step.id,
                     documentation: step.documentation,
                     sortText: getSortPrefix(step.count, 5) + '_' + step.text,
-                    insertText: this.getCompletionInsertText(step.text, stepPart),
+                    insertText: this.getCompletionInsertText(step.text, stepPart, step.pureText),
                     insertTextFormat: InsertTextFormat.Snippet,
                 };
             });

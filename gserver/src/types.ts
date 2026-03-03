@@ -27,6 +27,7 @@ export interface BaseSettings {
     gherkinDefinitionPart?: string,
     onTypeFormat: boolean,
     pages: PagesSettings,
+    includeExportScenarios: boolean,
     pureTextSteps: boolean
     skipDocStringsFormat: boolean,
     smartSnippets: boolean,
@@ -36,6 +37,7 @@ export interface BaseSettings {
     strictGherkinCompletion: boolean,
     strictGherkinValidation: boolean,
     syncfeatures: boolean | string,
+    vaStepsJson?: string | string[],
 }
 
 export interface Settings {
@@ -44,6 +46,7 @@ export interface Settings {
     gherkinDefinitionPart?: string,
     onTypeFormat: boolean,
     pages: PagesSettings,
+    includeExportScenarios: boolean,
     pureTextSteps: boolean
     skipDocStringsFormat: boolean,
     smartSnippets: boolean,
@@ -53,4 +56,5 @@ export interface Settings {
     strictGherkinCompletion: boolean,
     strictGherkinValidation: boolean,
     syncfeatures: boolean | string,
+    vaStepsJson: string[],
 }

@@ -15,6 +15,7 @@ import {
     DocumentRangeFormattingParams,
     FormattingOptions,
     Location,
+    Hover,
     ProposedFeatures,
     InitializeParams,
     DidChangeConfigurationNotification,
@@ -75,6 +76,7 @@ connection.onInitialize((params: InitializeParams) => {
                 workspaceDiagnostics: false
             },
             definitionProvider: true,
+            hoverProvider: true,
             documentFormattingProvider: true,
             documentRangeFormattingProvider: true,
             documentOnTypeFormattingProvider: {
@@ -142,9 +144,14 @@ async function revalidateAllDocuments() {
 }
 
 function watchStepsFiles(settings: Settings) {    
+    const isAbsoluteGlobPath = (path: string) =>
+        /^[a-zA-Z]:[\\/]/.test(path) || path.startsWith('\\\\');
+    const resolveGlobPath = (path: string) =>
+        isAbsoluteGlobPath(path) ? path : workspaceRoot + '/' + path;
+
     settings.steps.forEach((path) => {
         glob
-            .sync(workspaceRoot + '/' + path, { ignore: '.gitignore' })
+            .sync(resolveGlobPath(path), { ignore: '.gitignore' })
             .forEach((f) => {
                 fs.unwatchFile(f);
                 fs.watchFile(f, async () => {
@@ -159,7 +166,9 @@ function watchStepsFiles(settings: Settings) {
 function getSettingsFromBase(baseSettings: BaseSettings) {
     const settings: Settings = {
         ...baseSettings,
+        includeExportScenarios: baseSettings.includeExportScenarios ?? false,
         steps: new Array<string>().concat(baseSettings.steps ?? []),
+        vaStepsJson: new Array<string>().concat(baseSettings.vaStepsJson ?? []),
     };
     return settings;
 }
@@ -295,6 +304,34 @@ connection.onDefinition(async (position: TextDocumentPositionParams) => {
         return stepsHandler.getDefinition(line, text);
     }
     return Location.create(uri, Range.create(pos, pos));
+});
+
+connection.onHover(async (position: TextDocumentPositionParams): Promise<Hover | null> => {
+    const settings = await getSettings();
+    const textDocument = documents.get(position.textDocument.uri);
+    const text = textDocument?.getText() || '';
+    const line = text.split(/\r?\n/g)[position.position.line];
+    if (shouldHandleSteps(settings) && stepsHandler) {
+        const documentation = stepsHandler.getHover(line, text);
+        if (documentation) {
+            const doc = documentation.trim();
+            const isMultiline = /\r?\n/.test(doc);
+            if (isMultiline) {
+                // Export scenarios are shown inline in the editor.
+                return null;
+            }
+            const value = isMultiline
+                ? `**Export Scenario**\n\n\`\`\`gherkin\n${doc}\n\`\`\``
+                : doc;
+            return {
+                contents: {
+                    kind: 'markdown',
+                    value,
+                },
+            };
+        }
+    }
+    return null;
 });
 
 function getIndent(options: FormattingOptions) {

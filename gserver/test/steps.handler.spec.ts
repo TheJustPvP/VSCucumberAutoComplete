@@ -247,9 +247,9 @@ describe('constructor', () => {
       'stepc0c243868293a93f35e3a05e2b844793'
     );
     expect(firstElement).toHaveProperty('gherkin', GherkinType.When);
-    expect(firstElement.reg.toString()).toStrictEqual('/^I do something$/');
+    expect(firstElement.reg.toString()).toStrictEqual('/^I do something$/i');
     expect(firstElement.partialReg.toString()).toStrictEqual(
-      '/^(^I|$)( |$)(do|$)( |$)(something$|$)/'
+      '/^(^I|$)( |$)(do|$)( |$)(something$|$)/i'
     );
     expect(firstElement).toHaveProperty('text', 'I do something');
     expect(([] as Location[]).concat(firstElement.def)[0]['uri']).toContain('test.steps.js');
@@ -638,5 +638,142 @@ describe('step as a pure text test', () => {
   it('should return proper partial completion', () => {
     const completion = customStepsHandler.getCompletion('When I give 3', 1, '');
     expect(completion![0].insertText).toStrictEqual('3/4 and 5$');
+  });
+});
+
+describe('vanessa bsl comments parsing', () => {
+  const customSettings = {
+    ...settings,
+    steps: ['/data/steps/vanessa.steps.bsl'],
+    strictGherkinCompletion: false,
+  };
+  const customStepsHandler = new StepsHandler(__dirname, customSettings);
+  const elements = customStepsHandler.getElements();
+
+  it('should parse only valid vanessa comment steps', () => {
+    expect(elements).toHaveLength(2);
+  });
+
+  it('should parse step texts from comments', () => {
+    expect(elements[0].text).toStrictEqual('я выполняю скрипт SikuliX "ИмяСкрипта"');
+    expect(elements[1].text).toStrictEqual('я жду 10 секунд');
+  });
+
+  it('should provide completion from vanessa steps', () => {
+    const completion = customStepsHandler.getCompletion('И я выполняю', 1, '');
+    expect(completion).not.toBeNull();
+    expect(completion![0].label).toContain('я выполняю скрипт SikuliX');
+  });
+});
+
+describe('vanessa add step calls parsing', () => {
+  const customSettings = {
+    ...settings,
+    steps: ['/data/steps/vanessa.addstep.steps.bsl'],
+    strictGherkinCompletion: false,
+  };
+  const customStepsHandler = new StepsHandler(__dirname, customSettings);
+  const elements = customStepsHandler.getElements();
+
+  it('should parse steps from ДобавитьШагВМассивТестов calls', () => {
+    expect(elements).toHaveLength(2);
+  });
+
+  it('should provide completion for va step from add-step call', () => {
+    const completion = customStepsHandler.getCompletion('И я удаляю', 1, '');
+    expect(completion).not.toBeNull();
+    expect(completion![0].label).toContain('я удаляю документы вида');
+  });
+
+  it('should validate step with single quotes when definition uses double quotes', () => {
+    const diagnostic = customStepsHandler.validate(
+      "И я удаляю документы вида 'РасходнаяНакладная' за последние сутки",
+      1,
+      ''
+    );
+    expect(diagnostic).toBeNull();
+  });
+
+  it('should validate step text case-insensitively', () => {
+    const diagnostic = customStepsHandler.validate(
+      'и Я удаляю документы вида "РасходнаяНакладная" за последние сутки',
+      1,
+      ''
+    );
+    expect(diagnostic).toBeNull();
+  });
+});
+
+describe('absolute step path support', () => {
+  it('should load steps by absolute glob path', () => {
+    const customStepsHandler = new StepsHandler(__dirname, {
+      ...settings,
+      steps: [__dirname + '/data/steps/vanessa.addstep.steps.bsl'],
+      strictGherkinCompletion: false,
+    });
+    expect(customStepsHandler.getElements().length).toBeGreaterThan(0);
+  });
+});
+
+describe('export scenarios from feature files', () => {
+  const customSettings = {
+    ...settings,
+    steps: [],
+    includeExportScenarios: true,
+    strictGherkinCompletion: false,
+  };
+  const customStepsHandler = new StepsHandler(__dirname, customSettings);
+
+  it('should parse export scenario names as callable steps', () => {
+    const completion = customStepsHandler.getCompletion('Дано Я запускаю сценарий открытия', 1, '');
+    expect(completion).not.toBeNull();
+    expect(
+      completion!.some((c) => c.label.includes('Я запускаю сценарий открытия TestClient'))
+    ).toStrictEqual(true);
+  });
+
+  it('should validate export scenario call line', () => {
+    const diagnostic = customStepsHandler.validate(
+      'Дано Я запускаю сценарий открытия TestClient или подключаю уже существующий',
+      1,
+      ''
+    );
+    expect(diagnostic).toBeNull();
+  });
+
+  it('should return hover docs for export scenario call', () => {
+    const hover = customStepsHandler.getHover(
+      'И Я запускаю сценарий открытия TestClient или подключаю уже существующий',
+      ''
+    );
+    expect(hover).not.toBeNull();
+    expect(hover).toContain('Я закрыл все окна клиентского приложения');
+  });
+});
+
+describe('external va steps json', () => {
+  const customSettings = {
+    ...settings,
+    steps: [],
+    vaStepsJson: ['/data/steps/external.va.steps.json'],
+    strictGherkinCompletion: false,
+  };
+  const customStepsHandler = new StepsHandler(__dirname, customSettings);
+
+  it('should load steps from json and validate feature lines', () => {
+    const diagnostic = customStepsHandler.validate(
+      "И в таблице 'СписокНоменклатуры' я нажимаю на кнопку с именем 'СписокНоменклатурыДобавить'",
+      1,
+      ''
+    );
+    expect(diagnostic).toBeNull();
+  });
+
+  it('should show json documentation in hover', () => {
+    const hover = customStepsHandler.getHover(
+      "И в таблице 'СписокНоменклатуры' я нажимаю на кнопку с именем 'СписокНоменклатурыДобавить'",
+      ''
+    );
+    expect(hover).toContain('внешнего JSON-каталога');
   });
 });
