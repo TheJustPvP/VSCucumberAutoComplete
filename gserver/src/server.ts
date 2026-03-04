@@ -1,5 +1,6 @@
 import * as glob from 'glob';
 import * as fs from 'fs';
+import * as nodePath from 'path';
 
 import {
     createConnection,
@@ -40,6 +41,8 @@ const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
+let vaBundledJsonPath = '';
+let vaUserJsonPath = '';
 
 //Path to the root of our workspace
 let workspaceRoot: string;
@@ -51,6 +54,12 @@ let pagesHandler: PagesHandler;
 
 connection.onInitialize((params: InitializeParams) => {
     workspaceRoot = params.rootPath || '';
+    const initOptions = (params.initializationOptions || {}) as {
+        vaBundledJsonPath?: string;
+        vaUserJsonPath?: string;
+    };
+    vaBundledJsonPath = initOptions.vaBundledJsonPath || '';
+    vaUserJsonPath = initOptions.vaUserJsonPath || '';
 
     const capabilities = params.capabilities;
 
@@ -179,11 +188,16 @@ function watchStepsFiles(settings: Settings) {
 }
 
 function getSettingsFromBase(baseSettings: BaseSettings) {
-    const defaultVaLibrary = '.vscode/va-step-library.json';
+    const workspaceVaLibrary = '.vscode/va-step-library.json';
+    const bundledVaLibraryFallback = nodePath.resolve(
+        __dirname,
+        '../../resources/default-va-step-library.json'
+    );
     const configuredVaSteps = new Array<string>().concat(baseSettings.vaStepsJson ?? []);
     const vaStepsJson = configuredVaSteps.length
         ? configuredVaSteps
-        : [defaultVaLibrary];
+        : [workspaceVaLibrary, vaUserJsonPath, vaBundledJsonPath, bundledVaLibraryFallback]
+            .filter((p) => !!p);
 
     const settings: Settings = {
         ...baseSettings,

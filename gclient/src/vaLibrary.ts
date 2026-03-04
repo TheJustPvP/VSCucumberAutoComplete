@@ -108,6 +108,11 @@ class StepDetailsProvider implements TextDocumentContentProvider {
 }
 
 class VALibraryProvider implements TreeDataProvider<LibraryNode> {
+    constructor(
+        private readonly bundledLibraryUri?: Uri,
+        private readonly userLibraryUri?: Uri
+    ) {}
+
     private readonly actionNodes: ActionNode[] = [
         {
             type: 'action',
@@ -454,20 +459,22 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
             return;
         }
 
-        const workspaceFolder = workspace.workspaceFolders?.[0];
-        if (!workspaceFolder) {
-            window.showErrorMessage('\u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u043f\u0430\u043f\u043a\u0443 \u043f\u0440\u043e\u0435\u043a\u0442\u0430 \u0432 VS Code \u043f\u0435\u0440\u0435\u0434 \u0438\u043c\u043f\u043e\u0440\u0442\u043e\u043c \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0438 VA.');
-            return;
-        }
-
-        const targetDir = Uri.joinPath(workspaceFolder.uri, '.vscode');
-        const targetFile = Uri.joinPath(workspaceFolder.uri, WORKSPACE_LIBRARY_RELATIVE);
         try {
-            await workspace.fs.createDirectory(targetDir);
             const content = await workspace.fs.readFile(selected[0]);
-            await workspace.fs.writeFile(targetFile, content);
+            const workspaceFolder = workspace.workspaceFolders?.[0];
+            if (workspaceFolder) {
+                const targetDir = Uri.joinPath(workspaceFolder.uri, '.vscode');
+                const targetFile = Uri.joinPath(workspaceFolder.uri, WORKSPACE_LIBRARY_RELATIVE);
+                await workspace.fs.createDirectory(targetDir);
+                await workspace.fs.writeFile(targetFile, content);
+            }
+            if (this.userLibraryUri) {
+                const userDir = Uri.file(path.dirname(this.userLibraryUri.fsPath));
+                await workspace.fs.createDirectory(userDir);
+                await workspace.fs.writeFile(this.userLibraryUri, content);
+            }
             await this.refresh();
-            window.showInformationMessage(`VA \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0430 \u0438\u043c\u043f\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0430: ${targetFile.fsPath}`);
+            window.showInformationMessage('\u0411\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0430 VA \u0438\u043c\u043f\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0430.');
         } catch (error) {
             window.showErrorMessage(`\u041e\u0448\u0438\u0431\u043a\u0430 \u0438\u043c\u043f\u043e\u0440\u0442\u0430 VA \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0438: ${String(error)}`);
         }
@@ -475,29 +482,58 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
 
     async openLibraryJson() {
         const workspaceFolder = workspace.workspaceFolders?.[0];
-        if (!workspaceFolder) {
-            window.showErrorMessage('\u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u043f\u0430\u043f\u043a\u0443 \u043f\u0440\u043e\u0435\u043a\u0442\u0430 \u0432 VS Code.');
-            return;
-        }
-        const targetFile = Uri.joinPath(workspaceFolder.uri, WORKSPACE_LIBRARY_RELATIVE);
+        const targetFile = workspaceFolder
+            ? Uri.joinPath(workspaceFolder.uri, WORKSPACE_LIBRARY_RELATIVE)
+            : undefined;
         try {
-            const doc = await workspace.openTextDocument(targetFile);
+            const uriToOpen = targetFile || this.userLibraryUri || this.bundledLibraryUri;
+            if (!uriToOpen) {
+                window.showErrorMessage('\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0442\u043a\u0440\u044b\u0442\u044c VA JSON \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0443.');
+                return;
+            }
+            const doc = await workspace.openTextDocument(uriToOpen);
             await window.showTextDocument(doc, { preview: false, viewColumn: ViewColumn.Active });
         } catch {
-            window.showWarningMessage(
-                `\u0424\u0430\u0439\u043b \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0438 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d: ${LIBRARY_FILE_NAME}. \u0412\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u0435 "Import VA JSON Library".`
-            );
+            const fallback = this.userLibraryUri || this.bundledLibraryUri;
+            if (fallback) {
+                const fallbackDoc = await workspace.openTextDocument(fallback);
+                await window.showTextDocument(fallbackDoc, {
+                    preview: false,
+                    viewColumn: ViewColumn.Active,
+                });
+                return;
+            }
+            window.showWarningMessage(`\u0424\u0430\u0439\u043b \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0438 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d: ${LIBRARY_FILE_NAME}.`);
         }
     }
 
     private async readLibrary(): Promise<VaLibraryJson> {
         const workspaceFolder = workspace.workspaceFolders?.[0];
-        if (!workspaceFolder) {
+        if (workspaceFolder) {
+            const userLibrary = Uri.joinPath(workspaceFolder.uri, WORKSPACE_LIBRARY_RELATIVE);
+            try {
+                const bytes = await workspace.fs.readFile(userLibrary);
+                return JSON.parse(Buffer.from(bytes).toString('utf8')) as VaLibraryJson;
+            } catch {
+                // Continue with user/bundled fallback.
+            }
+        }
+
+        if (this.userLibraryUri) {
+            try {
+                const bytes = await workspace.fs.readFile(this.userLibraryUri);
+                return JSON.parse(Buffer.from(bytes).toString('utf8')) as VaLibraryJson;
+            } catch {
+                // Fallback to bundled JSON below.
+            }
+        }
+
+        if (!this.bundledLibraryUri) {
             return [];
         }
-        const userLibrary = Uri.joinPath(workspaceFolder.uri, WORKSPACE_LIBRARY_RELATIVE);
+
         try {
-            const bytes = await workspace.fs.readFile(userLibrary);
+            const bytes = await workspace.fs.readFile(this.bundledLibraryUri);
             return JSON.parse(Buffer.from(bytes).toString('utf8')) as VaLibraryJson;
         } catch {
             return [];
@@ -637,7 +673,10 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
 }
 
 export function activateVALibrary(context: ExtensionContext): Disposable[] {
-    const provider = new VALibraryProvider();
+    const provider = new VALibraryProvider(
+        Uri.joinPath(context.extensionUri, 'resources', 'default-va-step-library.json'),
+        Uri.joinPath(context.globalStorageUri, 'va-step-library.json')
+    );
     const detailsProvider = new StepDetailsProvider();
     const tree = window.createTreeView('cucumberautocomplete.vaLibrary', {
         treeDataProvider: provider,

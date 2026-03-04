@@ -295,6 +295,11 @@ function findFirstExportScenarioInDocument(document: {
 export function activate(context: ExtensionContext) {
     exportScenariosEnabled = getExportScenariosEnabled();
     const serverModule = context.asAbsolutePath(path.join('gserver', 'out', 'server.js'));
+    const bundledVaJsonPath = context.asAbsolutePath(
+        path.join('resources', 'default-va-step-library.json')
+    );
+    const userVaJsonPath = Uri.joinPath(context.globalStorageUri, 'va-step-library.json').fsPath;
+    void workspace.fs.createDirectory(context.globalStorageUri);
 
     const serverOptions: ServerOptions = {
         run: { module: serverModule, transport: TransportKind.ipc },
@@ -305,6 +310,10 @@ export function activate(context: ExtensionContext) {
         documentSelector: [{ scheme: 'file', language: 'feature' }],
         synchronize: {
             fileEvents: workspace.createFileSystemWatcher('**/.clientrc'),
+        },
+        initializationOptions: {
+            vaBundledJsonPath: bundledVaJsonPath,
+            vaUserJsonPath: userVaJsonPath,
         },
     };
 
