@@ -993,6 +993,9 @@ export default class StepsHandler {
     getExportScenarioSteps(root: string) {
         const files = glob.sync(`${root}/**/*.feature`, { absolute: true });
         return files.reduce((res, filePath) => {
+            if (this.shouldSkipExportScenarioPath(filePath)) {
+                return res;
+            }
             const content = getFileContent(filePath);
             const lines = content.split(/\r?\n/g);
             const hasExportTag = lines.some((l) => /(^|\s)@exportscenarios(\s|$)/i.test(l));
@@ -1032,6 +1035,7 @@ export default class StepsHandler {
                     {},
                     {
                         forcePureText: true,
+                        vaParameterizeQuotes: true,
                     }
                 ).map((step) => ({
                     ...step,
@@ -1090,6 +1094,10 @@ export default class StepsHandler {
     validate(line: string, lineNum: number, text: string) {
         const lower = text.toLowerCase();
         if (lower.includes('@exportscenarios') || /(^|\s)@exportscenarios(\s|$)/im.test(text)) {
+            return null;
+        }
+        // In many VA repos '*' is used as a visual section marker, not as a step.
+        if (/^\s*\*\s+/.test(line)) {
             return null;
         }
         line = line.replace(/\s*$/, '');
@@ -1263,6 +1271,8 @@ export default class StepsHandler {
         this.incrementElementCount(item.data);
         return item;
     }
+
+    shouldSkipExportScenarioPath(filePath: string) {
+        return /[\\/]vanessa[-_]add([\\/]|$)/i.test(filePath);
+    }
 }
-
-

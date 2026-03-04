@@ -8,9 +8,6 @@ import {
     commands,
     ConfigurationTarget,
     Uri,
-    EventEmitter,
-    TextDocumentContentProvider,
-    CancellationToken,
     Range,
     TextEditor,
     Location,
@@ -31,37 +28,19 @@ type ExportScenario = {
     title: string;
     body: string[];
     sourcePath: string;
+    sourceLine: number;
 };
 
 let client: LanguageClient;
 let exportScenariosStatusBar: ReturnType<typeof window.createStatusBarItem>;
 let exportScenariosDecoration: ReturnType<typeof window.createTextEditorDecorationType>;
 const exportScenariosMap = new Map<string, ExportScenario>();
+const parameterizedExportScenarios: Array<{ scenario: ExportScenario; matcher: RegExp }> = [];
 const decoder = new TextDecoder('utf-8');
 let activePreviewKey = '';
 let previewSessionVersion = 0;
 let exportScenariosEnabled = false;
 let isApplyingExportState = false;
-
-class ExportPreviewProvider implements TextDocumentContentProvider {
-    private readonly onDidChangeEmitter = new EventEmitter<Uri>();
-    private readonly content = new Map<string, string>();
-
-    readonly onDidChange = this.onDidChangeEmitter.event;
-
-    provideTextDocumentContent(uri: Uri, _token: CancellationToken): string {
-        return this.content.get(uri.toString()) || '';
-    }
-
-    setContent(uri: Uri, text: string) {
-        this.content.set(uri.toString(), text);
-        this.onDidChangeEmitter.fire(uri);
-    }
-
-    getContent(uri: Uri): string {
-        return this.content.get(uri.toString()) || '';
-    }
-}
 
 function getExportScenariosEnabled() {
     return workspace
@@ -79,6 +58,33 @@ function updateExportScenariosStatusBar() {
 
 function normalizeText(text: string) {
     return text.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function normalizeExportMatchText(text: string) {
+    return normalizeText(text).replace(/'([^'\r\n]*)'/g, '"$1"');
+}
+
+function escapeRegExp(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildQuotedParamMatcher(text: string): RegExp | null {
+    const normalized = normalizeExportMatchText(text);
+    if (!/["']/.test(normalized)) {
+        return null;
+    }
+
+    const token = '__va_export_param__';
+    const template = normalized.replace(/"[^"\r\n]*"|'[^'\r\n]*'/g, token);
+    const escaped = escapeRegExp(template).replace(
+        new RegExp(escapeRegExp(token), 'g'),
+        '"[^"\\r\\n]*"'
+    );
+    return new RegExp(`^${escaped}$`, 'i');
+}
+
+function shouldSkipExportScenarioPath(filePath: string) {
+    return /[\\/]vanessa[-_]add([\\/]|$)/i.test(filePath);
 }
 
 function getStepPart(line: string): string | null {
@@ -130,12 +136,16 @@ function tryGetScenarioTitle(line: string): string | null {
 
 async function rebuildExportScenariosMap() {
     exportScenariosMap.clear();
+    parameterizedExportScenarios.length = 0;
     if (!exportScenariosEnabled) {
         return;
     }
 
     const files = await workspace.findFiles('**/*.feature', '**/{node_modules,.git}/**');
     for (const uri of files) {
+        if (shouldSkipExportScenarioPath(uri.fsPath)) {
+            continue;
+        }
         const bytes = await workspace.fs.readFile(uri);
         const text = decoder.decode(bytes);
         const lines = text.split(/\r?\n/g);
@@ -162,16 +172,37 @@ async function rebuildExportScenariosMap() {
                 body.push(lines[j].replace(/\t/g, '    '));
             }
 
-            const key = normalizeText(scenarioTitle);
+            const key = normalizeExportMatchText(scenarioTitle);
             if (!exportScenariosMap.has(key)) {
-                exportScenariosMap.set(key, {
+                const scenario: ExportScenario = {
                     title: scenarioTitle,
                     body,
                     sourcePath: uri.fsPath,
-                });
+                    sourceLine: i,
+                };
+                exportScenariosMap.set(key, scenario);
+                const matcher = buildQuotedParamMatcher(scenarioTitle);
+                if (matcher) {
+                    parameterizedExportScenarios.push({ scenario, matcher });
+                }
             }
         }
     }
+}
+
+function findExportScenarioByStepPart(stepPart: string) {
+    const normalizedStep = normalizeExportMatchText(stepPart);
+    const exact = exportScenariosMap.get(normalizedStep);
+    if (exact) {
+        return exact;
+    }
+
+    for (const candidate of parameterizedExportScenarios) {
+        if (candidate.matcher.test(normalizedStep)) {
+            return candidate.scenario;
+        }
+    }
+    return undefined;
 }
 
 function updateEditorExportDecorations(editor?: TextEditor) {
@@ -191,7 +222,7 @@ function updateEditorExportDecorations(editor?: TextEditor) {
         if (!stepPart) {
             continue;
         }
-        if (exportScenariosMap.has(normalizeText(stepPart))) {
+        if (findExportScenarioByStepPart(stepPart)) {
             const line = target.document.lineAt(i);
             ranges.push(new Range(i, 0, i, line.text.length));
         }
@@ -201,14 +232,6 @@ function updateEditorExportDecorations(editor?: TextEditor) {
 
 function updateVisibleEditorsDecorations() {
     window.visibleTextEditors.forEach((editor) => updateEditorExportDecorations(editor));
-}
-
-function buildPreviewBody(body: string[]): string {
-    return body.map((line) => `    ${line}`).join('\n');
-}
-
-function buildPreviewLabel(scenario: ExportScenario): string {
-    return `${scenario.title} (${scenario.sourcePath})`;
 }
 
 async function closeExportPeekIfOpen() {
@@ -247,17 +270,6 @@ async function closeExportPeekIfOpen() {
     });
 }
 
-async function ensurePreviewLanguage(previewUri: Uri) {
-    try {
-        const doc = await workspace.openTextDocument(previewUri);
-        if (doc.languageId !== 'feature') {
-            await languages.setTextDocumentLanguage(doc, 'feature');
-        }
-    } catch {
-        // Ignore: language switch is best-effort for virtual preview docs.
-    }
-}
-
 function findExportScenarioAtLine(
     document: { lineCount: number; lineAt: (line: number) => { text: string } },
     lineIndex: number
@@ -271,7 +283,7 @@ function findExportScenarioAtLine(
         return undefined;
     }
 
-    const scenario = exportScenariosMap.get(normalizeText(stepPart));
+    const scenario = findExportScenarioByStepPart(stepPart);
     if (!scenario || !scenario.body.length) {
         return undefined;
     }
@@ -325,12 +337,6 @@ export function activate(context: ExtensionContext) {
     );
     client.start();
 
-    const exportPreviewProvider = new ExportPreviewProvider();
-    const providerSub = workspace.registerTextDocumentContentProvider(
-        'va-export-preview',
-        exportPreviewProvider
-    );
-
     exportScenariosDecoration = window.createTextEditorDecorationType({
         gutterIconPath: context.asAbsolutePath(path.join('img', 'export-step.svg')),
         gutterIconSize: 'contain',
@@ -363,11 +369,8 @@ export function activate(context: ExtensionContext) {
         }
         activePreviewKey = previewKey;
 
-        const previewUri = Uri.parse(
-            `va-export-preview://preview/${encodeURIComponent(buildPreviewLabel(found.scenario))}`
-        );
-        exportPreviewProvider.setContent(previewUri, buildPreviewBody(found.scenario.body));
-        await ensurePreviewLanguage(previewUri);
+        const sourceUri = Uri.file(found.scenario.sourcePath);
+        const sourceLine = Math.max(0, found.scenario.sourceLine);
         if (version !== previewSessionVersion || !exportScenariosEnabled) {
             return;
         }
@@ -376,7 +379,7 @@ export function activate(context: ExtensionContext) {
             'editor.action.peekLocations',
             target.document.uri,
             new Position(found.lineIndex, 0),
-            [new Location(previewUri, new Range(0, 0, 0, 0))],
+            [new Location(sourceUri, new Range(sourceLine, 0, sourceLine, 0))],
             'peek'
         );
     };
@@ -389,6 +392,7 @@ export function activate(context: ExtensionContext) {
         // phase 1: fully clear old UI state
         await closeExportPeekIfOpen();
         exportScenariosMap.clear();
+        parameterizedExportScenarios.length = 0;
         updateVisibleEditorsDecorations();
 
         // phase 2: rebuild and re-open if enabled
@@ -470,13 +474,8 @@ export function activate(context: ExtensionContext) {
         }
         activePreviewKey = previewKey;
 
-        const previewText = buildPreviewBody(scenario.body);
-
-        const previewUri = Uri.parse(
-            `va-export-preview://preview/${encodeURIComponent(buildPreviewLabel(scenario))}`
-        );
-        exportPreviewProvider.setContent(previewUri, previewText);
-        await ensurePreviewLanguage(previewUri);
+        const sourceUri = Uri.file(scenario.sourcePath);
+        const sourceLine = Math.max(0, scenario.sourceLine);
         if (version !== previewSessionVersion || !exportScenariosEnabled) {
             return;
         }
@@ -485,7 +484,7 @@ export function activate(context: ExtensionContext) {
             'editor.action.peekLocations',
             e.textEditor.document.uri,
             new Position(found.lineIndex, 0),
-            [new Location(previewUri, new Range(0, 0, 0, 0))],
+            [new Location(sourceUri, new Range(sourceLine, 0, sourceLine, 0))],
             'peek'
         );
     });
@@ -499,7 +498,7 @@ export function activate(context: ExtensionContext) {
             if (!stepPart) {
                 return undefined;
             }
-            const scenario = exportScenariosMap.get(normalizeText(stepPart));
+            const scenario = findExportScenarioByStepPart(stepPart);
             if (!scenario || !scenario.body.length) {
                 return undefined;
             }
@@ -513,13 +512,6 @@ export function activate(context: ExtensionContext) {
     });
 
     const textChangeSub = workspace.onDidChangeTextDocument((e) => {
-        if (e.document.uri.scheme === 'va-export-preview') {
-            const saved = exportPreviewProvider.getContent(e.document.uri);
-            if (saved && e.document.getText() !== saved) {
-                exportPreviewProvider.setContent(e.document.uri, saved);
-            }
-            return;
-        }
         if (window.activeTextEditor && e.document === window.activeTextEditor.document) {
             updateEditorExportDecorations(window.activeTextEditor);
         }
@@ -530,7 +522,6 @@ export function activate(context: ExtensionContext) {
     });
 
     context.subscriptions.push(
-        providerSub,
         toggleCommand,
         configSubscription,
         featureWatcher,

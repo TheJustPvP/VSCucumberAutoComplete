@@ -793,6 +793,31 @@ describe('export scenarios from feature files', () => {
     expect(hover).not.toBeNull();
     expect(hover).toContain('Я закрыл все окна клиентского приложения');
   });
+
+  it('should treat quoted params in export scenario names as dynamic values', () => {
+    const diagnostic = customStepsHandler.validate(
+      'Given I execute export request with date "Today"',
+      1,
+      ''
+    );
+    expect(diagnostic).toBeNull();
+  });
+
+  it('should ignore export scenarios from Vanessa-ADD path', () => {
+    const diagnostic = customStepsHandler.validate(
+      'Given I should be ignored export scenario',
+      1,
+      ''
+    );
+    expect(diagnostic).not.toBeNull();
+  });
+});
+
+describe('validation exceptions', () => {
+  it('should not validate star section markers as steps', () => {
+    const diagnostic = s.validate('* Section marker', 1, '');
+    expect(diagnostic).toBeNull();
+  });
 });
 
 describe('external va steps json', () => {
@@ -821,3 +846,4 @@ describe('external va steps json', () => {
     expect(hover).toContain('внешнего JSON-каталога');
   });
 });
+
