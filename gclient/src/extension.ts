@@ -29,6 +29,7 @@ import {
 type ExportScenario = {
     title: string;
     body: string[];
+    sourcePath: string;
 };
 
 let client: LanguageClient;
@@ -37,7 +38,9 @@ let exportScenariosDecoration: ReturnType<typeof window.createTextEditorDecorati
 const exportScenariosMap = new Map<string, ExportScenario>();
 const decoder = new TextDecoder('utf-8');
 let activePreviewKey = '';
-const MAX_PREVIEW_LINES = 6;
+let previewSessionVersion = 0;
+let exportScenariosEnabled = false;
+let isApplyingExportState = false;
 
 class ExportPreviewProvider implements TextDocumentContentProvider {
     private readonly onDidChangeEmitter = new EventEmitter<Uri>();
@@ -66,7 +69,7 @@ function getExportScenariosEnabled() {
 }
 
 function updateExportScenariosStatusBar() {
-    const enabled = getExportScenariosEnabled();
+    const enabled = exportScenariosEnabled;
     exportScenariosStatusBar.text = enabled
         ? '$(check) Export Scenarios: On'
         : '$(circle-slash) Export Scenarios: Off';
@@ -126,7 +129,7 @@ function tryGetScenarioTitle(line: string): string | null {
 
 async function rebuildExportScenariosMap() {
     exportScenariosMap.clear();
-    if (!getExportScenariosEnabled()) {
+    if (!exportScenariosEnabled) {
         return;
     }
 
@@ -160,7 +163,11 @@ async function rebuildExportScenariosMap() {
 
             const key = normalizeText(scenarioTitle);
             if (!exportScenariosMap.has(key)) {
-                exportScenariosMap.set(key, { title: scenarioTitle, body });
+                exportScenariosMap.set(key, {
+                    title: scenarioTitle,
+                    body,
+                    sourcePath: uri.fsPath,
+                });
             }
         }
     }
@@ -172,7 +179,7 @@ function updateEditorExportDecorations(editor?: TextEditor) {
         return;
     }
 
-    if (!getExportScenariosEnabled()) {
+    if (!exportScenariosEnabled) {
         target.setDecorations(exportScenariosDecoration, []);
         return;
     }
@@ -191,13 +198,63 @@ function updateEditorExportDecorations(editor?: TextEditor) {
     target.setDecorations(exportScenariosDecoration, ranges);
 }
 
+function updateVisibleEditorsDecorations() {
+    window.visibleTextEditors.forEach((editor) => updateEditorExportDecorations(editor));
+}
+
 function buildPreviewBody(body: string[]): string {
-    if (body.length <= MAX_PREVIEW_LINES) {
-        return body.join('\n');
+    return body.map((line) => `    ${line}`).join('\n');
+}
+
+function buildPreviewLabel(scenario: ExportScenario): string {
+    return `${scenario.title} (${scenario.sourcePath})`;
+}
+
+async function closeExportPeekIfOpen() {
+    activePreviewKey = '';
+    try {
+        await commands.executeCommand('closeReferenceSearch');
+    } catch {
+        // no-op
     }
-    const visible = body.slice(0, MAX_PREVIEW_LINES);
-    visible.push(`... (${body.length - MAX_PREVIEW_LINES} more lines)`);
-    return visible.join('\n');
+    try {
+        await commands.executeCommand('editor.action.closeReferenceSearch');
+    } catch {
+        // no-op
+    }
+    try {
+        const editor = window.activeTextEditor;
+        if (editor) {
+            await commands.executeCommand(
+                'editor.action.peekLocations',
+                editor.document.uri,
+                editor.selection.active,
+                [],
+                'peek'
+            );
+        }
+    } catch {
+        // no-op
+    }
+    await new Promise<void>((resolve) => {
+        setTimeout(() => {
+            void commands.executeCommand('closeReferenceSearch').then(
+                () => resolve(),
+                () => resolve()
+            );
+        }, 30);
+    });
+}
+
+async function ensurePreviewLanguage(previewUri: Uri) {
+    try {
+        const doc = await workspace.openTextDocument(previewUri);
+        if (doc.languageId !== 'feature') {
+            await languages.setTextDocumentLanguage(doc, 'feature');
+        }
+    } catch {
+        // Ignore: language switch is best-effort for virtual preview docs.
+    }
 }
 
 function findExportScenarioAtLine(
@@ -235,6 +292,7 @@ function findFirstExportScenarioInDocument(document: {
 }
 
 export function activate(context: ExtensionContext) {
+    exportScenariosEnabled = getExportScenariosEnabled();
     const serverModule = context.asAbsolutePath(path.join('gserver', 'out', 'server.js'));
 
     const serverOptions: ServerOptions = {
@@ -274,47 +332,10 @@ export function activate(context: ExtensionContext) {
     updateExportScenariosStatusBar();
     exportScenariosStatusBar.show();
 
-    const toggleCommand = commands.registerCommand(
-        'cucumberautocomplete.toggleExportScenarios',
-        async () => {
-            const current = getExportScenariosEnabled();
-            await workspace
-                .getConfiguration('cucumberautocomplete')
-                .update('includeExportScenarios', !current, ConfigurationTarget.Workspace);
-            updateExportScenariosStatusBar();
-            await rebuildExportScenariosMap();
-            updateEditorExportDecorations();
-            if (!getExportScenariosEnabled()) {
-                activePreviewKey = '';
-                await commands.executeCommand('closeReferenceSearch');
-            } else {
-                await showPreviewForActiveEditor();
-            }
-        }
-    );
-
-    const configSubscription = workspace.onDidChangeConfiguration((e) => {
-        if (!e.affectsConfiguration('cucumberautocomplete.includeExportScenarios')) {
-            return;
-        }
-        updateExportScenariosStatusBar();
-        void rebuildExportScenariosMap().then(() => updateEditorExportDecorations());
-    });
-
-    const featureWatcher = workspace.createFileSystemWatcher('**/*.feature');
-    const refresh = () => {
-        if (!getExportScenariosEnabled()) {
-            return;
-        }
-        void rebuildExportScenariosMap().then(() => updateEditorExportDecorations());
-    };
-    featureWatcher.onDidCreate(refresh);
-    featureWatcher.onDidChange(refresh);
-    featureWatcher.onDidDelete(refresh);
-
-    const showPreviewForActiveEditor = async (editor?: TextEditor) => {
+    const showPreviewForActiveEditor = async (editor?: TextEditor, force = false) => {
+        const version = previewSessionVersion;
         const target = editor || window.activeTextEditor;
-        if (!target || target.document.languageId !== 'feature' || !getExportScenariosEnabled()) {
+        if (!target || target.document.languageId !== 'feature' || !exportScenariosEnabled) {
             return;
         }
 
@@ -327,15 +348,19 @@ export function activate(context: ExtensionContext) {
         }
 
         const previewKey = `${target.document.uri.toString()}:${found.lineIndex}`;
-        if (activePreviewKey === previewKey) {
+        if (!force && activePreviewKey === previewKey) {
             return;
         }
         activePreviewKey = previewKey;
 
         const previewUri = Uri.parse(
-            `va-export-preview://preview/${encodeURIComponent(found.scenario.title)}.feature`
+            `va-export-preview://preview/${encodeURIComponent(buildPreviewLabel(found.scenario))}`
         );
         exportPreviewProvider.setContent(previewUri, buildPreviewBody(found.scenario.body));
+        await ensurePreviewLanguage(previewUri);
+        if (version !== previewSessionVersion || !exportScenariosEnabled) {
+            return;
+        }
 
         await commands.executeCommand(
             'editor.action.peekLocations',
@@ -346,13 +371,80 @@ export function activate(context: ExtensionContext) {
         );
     };
 
+    const applyExportState = async (next: boolean) => {
+        previewSessionVersion++;
+        exportScenariosEnabled = next;
+        updateExportScenariosStatusBar();
+
+        // phase 1: fully clear old UI state
+        await closeExportPeekIfOpen();
+        exportScenariosMap.clear();
+        updateVisibleEditorsDecorations();
+
+        // phase 2: rebuild and re-open if enabled
+        if (!next) {
+            return;
+        }
+        await rebuildExportScenariosMap();
+        updateVisibleEditorsDecorations();
+        activePreviewKey = '';
+        await showPreviewForActiveEditor(undefined, true);
+    };
+
+    const toggleCommand = commands.registerCommand(
+        'cucumberautocomplete.toggleExportScenarios',
+        async () => {
+            if (isApplyingExportState) {
+                return;
+            }
+            isApplyingExportState = true;
+            try {
+                const current = exportScenariosEnabled;
+                const next = !current;
+                await workspace
+                    .getConfiguration('cucumberautocomplete')
+                    .update('includeExportScenarios', next, ConfigurationTarget.Workspace);
+                await applyExportState(next);
+            } finally {
+                isApplyingExportState = false;
+            }
+        }
+    );
+
+    const configSubscription = workspace.onDidChangeConfiguration((e) => {
+        if (!e.affectsConfiguration('cucumberautocomplete.includeExportScenarios')) {
+            return;
+        }
+        if (isApplyingExportState) {
+            return;
+        }
+        const next = getExportScenariosEnabled();
+        void applyExportState(next);
+    });
+
+    const featureWatcher = workspace.createFileSystemWatcher('**/*.feature');
+    const refresh = () => {
+        if (!exportScenariosEnabled) {
+            exportScenariosEnabled = false;
+            return;
+        }
+        void rebuildExportScenariosMap().then(() => updateVisibleEditorsDecorations());
+    };
+    featureWatcher.onDidCreate(refresh);
+    featureWatcher.onDidChange(refresh);
+    featureWatcher.onDidDelete(refresh);
+
     const activeEditorSub = window.onDidChangeActiveTextEditor((editor) => {
+        activePreviewKey = '';
         updateEditorExportDecorations(editor);
-        void showPreviewForActiveEditor(editor);
+        if (!exportScenariosEnabled) {
+            void closeExportPeekIfOpen();
+        }
     });
 
     const selectionSub = window.onDidChangeTextEditorSelection(async (e) => {
-        if (!getExportScenariosEnabled() || e.textEditor.document.languageId !== 'feature') {
+        const version = previewSessionVersion;
+        if (!exportScenariosEnabled || e.textEditor.document.languageId !== 'feature') {
             return;
         }
         const lineIndex = e.selections[0]?.active.line ?? -1;
@@ -371,9 +463,13 @@ export function activate(context: ExtensionContext) {
         const previewText = buildPreviewBody(scenario.body);
 
         const previewUri = Uri.parse(
-            `va-export-preview://preview/${encodeURIComponent(scenario.title)}.feature`
+            `va-export-preview://preview/${encodeURIComponent(buildPreviewLabel(scenario))}`
         );
         exportPreviewProvider.setContent(previewUri, previewText);
+        await ensurePreviewLanguage(previewUri);
+        if (version !== previewSessionVersion || !exportScenariosEnabled) {
+            return;
+        }
 
         await commands.executeCommand(
             'editor.action.peekLocations',
@@ -386,7 +482,7 @@ export function activate(context: ExtensionContext) {
 
     const hoverSub = languages.registerHoverProvider('feature', {
         provideHover(document, position): Hover | undefined {
-            if (!getExportScenariosEnabled()) {
+            if (!exportScenariosEnabled) {
                 return undefined;
             }
             const stepPart = getStepPart(document.lineAt(position.line).text);
@@ -420,8 +516,7 @@ export function activate(context: ExtensionContext) {
     });
 
     void rebuildExportScenariosMap().then(() => {
-        updateEditorExportDecorations();
-        void showPreviewForActiveEditor();
+        updateVisibleEditorsDecorations();
     });
 
     context.subscriptions.push(

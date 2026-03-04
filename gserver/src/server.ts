@@ -224,6 +224,7 @@ function populateHandlers(settings: Settings) {
 documents.onDidOpen(async () => {
     const settings = await getSettings(true);
     initStepsAndPagesSetup(settings);
+    revalidateAllDocuments();
 });
 
 connection.onCompletion(
@@ -252,13 +253,17 @@ connection.onCompletionResolve((item: CompletionItem) => {
     return item;
 });
 
-function validate(text: string, settings: Settings) {
+function validate(text: string, settings: Settings, rawText?: string) {
+    const sourceText = rawText || text;
+    if (isExportScenariosDocument(sourceText)) {
+        return [] as Diagnostic[];
+    }
     return text.split(/\r?\n/g).reduce((res, line, i) => {
         let diagnostic;
         if (
             shouldHandleSteps(settings) &&
       stepsHandler &&
-      (diagnostic = stepsHandler.validate(line, i, text))
+      (diagnostic = stepsHandler.validate(line, i, sourceText))
         ) {
             res.push(diagnostic);
         } else if (shouldHandlePages(settings) && pagesHandler) {
@@ -269,12 +274,23 @@ function validate(text: string, settings: Settings) {
     }, [] as Diagnostic[]);
 }
 
+function isExportScenariosDocument(text: string) {
+    const lower = text.toLowerCase();
+    return lower.includes('@exportscenarios') || /(^|\s)@exportscenarios(\s|$)/im.test(text);
+}
+
 connection.languages.diagnostics.on(async (params) => {
     const document = documents.get(params.textDocument.uri);
     if (document !== undefined) {
         const settings = await getSettings();
         const text = document.getText();
-        const diagnostics = validate(clearGherkinComments(text), settings);
+        if (isExportScenariosDocument(text)) {
+            return {
+                kind: DocumentDiagnosticReportKind.Full,
+                items: [],
+            } satisfies DocumentDiagnosticReport;
+        }
+        const diagnostics = validate(clearGherkinComments(text), settings, text);
         return {
             kind: DocumentDiagnosticReportKind.Full,
             items: diagnostics,

@@ -856,7 +856,7 @@ export default class StepsHandler {
         return files.reduce((res, filePath) => {
             const content = getFileContent(filePath);
             const lines = content.split(/\r?\n/g);
-            const hasExportTag = lines.some((l) => /^\s*@exportscenarios\s*$/i.test(l));
+            const hasExportTag = lines.some((l) => /(^|\s)@exportscenarios(\s|$)/i.test(l));
             if (!hasExportTag) {
                 return res;
             }
@@ -949,6 +949,10 @@ export default class StepsHandler {
     }
 
     validate(line: string, lineNum: number, text: string) {
+        const lower = text.toLowerCase();
+        if (lower.includes('@exportscenarios') || /(^|\s)@exportscenarios(\s|$)/im.test(text)) {
+            return null;
+        }
         line = line.replace(/\s*$/, '');
         const lineForError = line.replace(/^\s*/, '');
         const match = this.getGherkinMatch(line, text);
