@@ -1,21 +1,21 @@
 {
-  "name": "cucumberautocomplete",
-  "version": "3.1.0",
-  "publisher": "alexkrechik",
-  "author": "Alexander Krechik",
+  "name": "cucumberautocompletevaedition",
+  "version": "1.0.0",
+  "publisher": "daniilterpugov",
+  "author": "Daniil Terpugov",
   "license": "MIT",
   "displayName": "Cucumber (Gherkin) Full Support",
   "description": "VSCode Cucumber (Gherkin) Full Language Support + Formatting + Autocomplete",
-  "homepage": "https://github.com/alexkrechik/VSCucumberAutoComplete",
+  "homepage": "https://github.com/thejustpvp/VSCucumberAutoComplete",
   "engines": {
     "vscode": "^1.75.0"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/alexkrechik/VSCucumberAutoComplete"
+    "url": "https://github.com/thejustpvp/VSCucumberAutoComplete"
   },
   "bugs": {
-    "url": "https://github.com/alexkrechik/VSCucumberAutoComplete/issues"
+    "url": "https://github.com/thejustpvp/VSCucumberAutoComplete/issues"
   },
   "categories": [
     "Programming Languages"
@@ -68,47 +68,47 @@
     ],
     "commands": [
       {
-        "command": "cucumberautocomplete.toggleExportScenarios",
+        "command": "cucumberautocompletevaedition.toggleExportScenarios",
         "title": "Cucumber: Toggle Export Scenarios"
       },
       {
-        "command": "cucumberautocomplete.vaLibrary.importJson",
+        "command": "cucumberautocompletevaedition.vaLibrary.importJson",
         "title": "VA Библиотека: Загрузить JSON"
       },
       {
-        "command": "cucumberautocomplete.vaLibrary.refresh",
+        "command": "cucumberautocompletevaedition.vaLibrary.refresh",
         "title": "VA Библиотека: Обновить"
       },
       {
-        "command": "cucumberautocomplete.vaLibrary.search",
+        "command": "cucumberautocompletevaedition.vaLibrary.search",
         "title": "VA Библиотека: Найти шаг"
       },
       {
-        "command": "cucumberautocomplete.vaLibrary.openJson",
+        "command": "cucumberautocompletevaedition.vaLibrary.openJson",
         "title": "VA Библиотека: Открыть JSON"
       },
       {
-        "command": "cucumberautocomplete.vaLibrary.insertStep",
+        "command": "cucumberautocompletevaedition.vaLibrary.insertStep",
         "title": "VA Библиотека: Вставить шаг"
       },
       {
-        "command": "cucumberautocomplete.vaLibrary.showStepDetails",
+        "command": "cucumberautocompletevaedition.vaLibrary.showStepDetails",
         "title": "VA Библиотека: Открыть описание шага"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "cucumberautocomplete",
+          "id": "cucumberautocompletevaedition",
           "title": "Библиотека известных шагов VA",
           "icon": "img/cucumber.png"
         }
       ]
     },
     "views": {
-      "cucumberautocomplete": [
+      "cucumberautocompletevaedition": [
         {
-          "id": "cucumberautocomplete.vaLibrary",
+          "id": "cucumberautocompletevaedition.vaLibrary",
           "name": "Библиотека известных шагов VA"
         }
       ]
@@ -116,8 +116,8 @@
     "menus": {
       "view/item/context": [
         {
-          "command": "cucumberautocomplete.vaLibrary.showStepDetails",
-          "when": "view == cucumberautocomplete.vaLibrary && viewItem == vaLibraryStep",
+          "command": "cucumberautocompletevaedition.vaLibrary.showStepDetails",
+          "when": "view == cucumberautocompletevaedition.vaLibrary && viewItem == vaLibraryStep",
           "group": "navigation@1"
         }
       ]

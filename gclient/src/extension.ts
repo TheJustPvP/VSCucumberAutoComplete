@@ -338,7 +338,7 @@ export function activate(context: ExtensionContext) {
     });
 
     exportScenariosStatusBar = window.createStatusBarItem(1);
-    exportScenariosStatusBar.command = 'cucumberautocomplete.toggleExportScenarios';
+    exportScenariosStatusBar.command = 'cucumberautocompletevaedition.toggleExportScenarios';
     updateExportScenariosStatusBar();
     exportScenariosStatusBar.show();
 
@@ -402,7 +402,7 @@ export function activate(context: ExtensionContext) {
     };
 
     const toggleCommand = commands.registerCommand(
-        'cucumberautocomplete.toggleExportScenarios',
+        'cucumberautocompletevaedition.toggleExportScenarios',
         async () => {
             if (isApplyingExportState) {
                 return;

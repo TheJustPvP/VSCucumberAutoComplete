@@ -118,21 +118,21 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
             type: 'action',
             label: '\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c JSON',
             description: '\u0418\u043c\u043f\u043e\u0440\u0442',
-            command: 'cucumberautocomplete.vaLibrary.importJson',
+            command: 'cucumberautocompletevaedition.vaLibrary.importJson',
             icon: 'cloud-download',
         },
         {
             type: 'action',
             label: '\u041d\u0430\u0439\u0442\u0438 \u0448\u0430\u0433',
             description: '\u041f\u043e\u0438\u0441\u043a',
-            command: 'cucumberautocomplete.vaLibrary.search',
+            command: 'cucumberautocompletevaedition.vaLibrary.search',
             icon: 'search',
         },
         {
             type: 'action',
             label: '\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c',
             description: 'Refresh',
-            command: 'cucumberautocomplete.vaLibrary.refresh',
+            command: 'cucumberautocompletevaedition.vaLibrary.refresh',
             icon: 'refresh',
         },
     ];
@@ -180,7 +180,7 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
             .join('\n');
         item.command = {
             title: 'Insert Step',
-            command: 'cucumberautocomplete.vaLibrary.insertStep',
+            command: 'cucumberautocompletevaedition.vaLibrary.insertStep',
             arguments: [element],
         };
         return item;
@@ -678,7 +678,7 @@ export function activateVALibrary(context: ExtensionContext): Disposable[] {
         Uri.joinPath(context.globalStorageUri, 'va-step-library.json')
     );
     const detailsProvider = new StepDetailsProvider();
-    const tree = window.createTreeView('cucumberautocomplete.vaLibrary', {
+    const tree = window.createTreeView('cucumberautocompletevaedition.vaLibrary', {
         treeDataProvider: provider,
         showCollapseAll: true,
     });
@@ -686,29 +686,29 @@ export function activateVALibrary(context: ExtensionContext): Disposable[] {
     provider.setDetailsProvider(detailsProvider);
 
     const refreshCommand = commands.registerCommand(
-        'cucumberautocomplete.vaLibrary.refresh',
+        'cucumberautocompletevaedition.vaLibrary.refresh',
         async () => provider.refresh()
     );
     const importCommand = commands.registerCommand(
-        'cucumberautocomplete.vaLibrary.importJson',
+        'cucumberautocompletevaedition.vaLibrary.importJson',
         async () => provider.importFromJsonFile()
     );
     const openJsonCommand = commands.registerCommand(
-        'cucumberautocomplete.vaLibrary.openJson',
+        'cucumberautocompletevaedition.vaLibrary.openJson',
         async () => provider.openLibraryJson()
     );
     const searchCommand = commands.registerCommand(
-        'cucumberautocomplete.vaLibrary.search',
+        'cucumberautocompletevaedition.vaLibrary.search',
         async () => provider.searchAndReveal()
     );
     const insertStepCommand = commands.registerCommand(
-        'cucumberautocomplete.vaLibrary.insertStep',
+        'cucumberautocompletevaedition.vaLibrary.insertStep',
         async (target: unknown) => {
             await provider.insertStep(target);
         }
     );
     const showStepDetailsCommand = commands.registerCommand(
-        'cucumberautocomplete.vaLibrary.showStepDetails',
+        'cucumberautocompletevaedition.vaLibrary.showStepDetails',
         async (target: unknown) => provider.showStepDetails(target)
     );
 
