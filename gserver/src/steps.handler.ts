@@ -55,8 +55,21 @@ interface JSDocComments {
 }
 
 type ExternalStepEntry = string | {
-  text: string;
+  text?: string;
   documentation?: string;
+  description?: string;
+  path?: string;
+  section?: string;
+  file?: string;
+  procedure?: string;
+  name?: string;
+  step?: string;
+  // Russian keys from 1C export
+  ИмяШага?: string;
+  ОписаниеШага?: string;
+  ПолныйТипШага?: string;
+  Файл?: string;
+  ИмяПроцедуры?: string;
 };
 
 type StepBuildOptions = {
@@ -412,7 +425,12 @@ export default class StepsHandler {
         }
     }
 
-    getCompletionInsertText(step: string, stepPart: string, pureText?: boolean) {
+    getCompletionInsertText(
+        step: string,
+        stepPart: string,
+        pureText?: boolean,
+        documentation?: string
+    ) {
     // Return only part we need for our step
         let res = step;
         const strArray = this.getPartialRegParts(res);
@@ -464,7 +482,53 @@ export default class StepsHandler {
             res = res.replace(/\$$/, '');
         }
 
-        return res;
+        return this.appendDocumentationTable(res, documentation, step);
+    }
+
+    appendDocumentationTable(insertText: string, documentation?: string, stepText?: string) {
+        const table = this.extractTableTemplate(documentation);
+        const fallbackTable = table ? '' : this.getFallbackVaTableTemplate(stepText || insertText);
+        const finalTable = table || fallbackTable;
+        if (!finalTable) {
+            return insertText;
+        }
+        if (insertText.includes('\n|') || /^\s*\|/.test(insertText.trim())) {
+            return insertText;
+        }
+        return `${insertText}\n${finalTable}`;
+    }
+
+    extractTableTemplate(documentation?: string) {
+        if (!documentation || !documentation.trim()) {
+            return '';
+        }
+        const lines = documentation.replace(/\r/g, '').split('\n');
+        const tableLines: string[] = [];
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (/^\|.*\|$/.test(trimmed)) {
+                tableLines.push(trimmed);
+                continue;
+            }
+            if (tableLines.length) {
+                break;
+            }
+        }
+        // Header + at least one row
+        return tableLines.length >= 2 ? tableLines.join('\n') : '';
+    }
+
+    getFallbackVaTableTemplate(text: string) {
+        const normalized = text.toLowerCase();
+        const isTableFillStep = /заполняю таблиц/.test(normalized) &&
+            /(^|\s)данными(\s|$)/.test(normalized);
+        if (!isTableFillStep) {
+            return '';
+        }
+        return [
+            "| 'ИмяКолонки' |",
+            "| 'ЗначениеКолонки' |",
+        ].join('\n');
     }
 
     getDocumentation(stepRawComment: string) {
@@ -808,8 +872,17 @@ export default class StepsHandler {
                 }
 
                 parsed.forEach((entry, i) => {
-                    const text = typeof entry === 'string' ? entry : entry.text;
-                    const doc = typeof entry === 'string' ? undefined : entry.documentation;
+                    const text = typeof entry === 'string'
+                        ? entry
+                        : (entry.text || entry.ИмяШага || entry.step || entry.name || '');
+                    const doc = typeof entry === 'string'
+                        ? undefined
+                        : (
+                            entry.documentation ||
+                            entry.description ||
+                            entry.ОписаниеШага ||
+                            entry.ПолныйТипШага
+                        );
                     if (!text || !text.trim()) {
                         return;
                     }
@@ -1074,7 +1147,12 @@ export default class StepsHandler {
                     data: step.id,
                     documentation: step.documentation,
                     sortText: getSortPrefix(step.count, 5) + '_' + step.text,
-                    insertText: this.getCompletionInsertText(step.text, stepPart, step.pureText),
+                    insertText: this.getCompletionInsertText(
+                        step.text,
+                        stepPart,
+                        step.pureText,
+                        step.documentation
+                    ),
                     insertTextFormat: InsertTextFormat.Snippet,
                 };
             });

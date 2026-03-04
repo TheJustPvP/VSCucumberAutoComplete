@@ -119,7 +119,8 @@ async function getSettings(forceReset?: boolean) {
 
 function shouldHandleSteps(settings: Settings) {
     const s = settings.steps;
-    return s && s.length ? true : false;
+    const j = settings.vaStepsJson;
+    return (s && s.length ? true : false) || (j && j.length ? true : false);
 }
 
 function shouldHandlePages(settings: Settings) {
@@ -161,14 +162,33 @@ function watchStepsFiles(settings: Settings) {
                 });
             });
     });
+
+    settings.vaStepsJson.forEach((path) => {
+        glob
+            .sync(resolveGlobPath(path), { ignore: '.gitignore' })
+            .forEach((f) => {
+                fs.unwatchFile(f);
+                fs.watchFile(f, async () => {
+                    const settings = await getSettings();
+                    populateHandlers(settings);
+                    revalidateAllDocuments();
+                });
+            });
+    });
 }
 
 function getSettingsFromBase(baseSettings: BaseSettings) {
+    const defaultVaLibrary = '.vscode/va-step-library.json';
+    const configuredVaSteps = new Array<string>().concat(baseSettings.vaStepsJson ?? []);
+    const vaStepsJson = configuredVaSteps.length
+        ? configuredVaSteps
+        : [defaultVaLibrary];
+
     const settings: Settings = {
         ...baseSettings,
         includeExportScenarios: baseSettings.includeExportScenarios ?? false,
         steps: new Array<string>().concat(baseSettings.steps ?? []),
-        vaStepsJson: new Array<string>().concat(baseSettings.vaStepsJson ?? []),
+        vaStepsJson,
     };
     return settings;
 }

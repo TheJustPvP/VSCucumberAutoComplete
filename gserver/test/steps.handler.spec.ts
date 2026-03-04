@@ -502,6 +502,32 @@ describe('getCompletionInsertText', () => {
       expect(res).toStrictEqual(prefix);
     });
   });
+
+  it('should append table from documentation for va-like steps', () => {
+    const res = s.getCompletionInsertText(
+      'я заполняю таблицу "ИмяТаблицы" данными',
+      'я заполняю таблицу "ИмяТаблицы" ',
+      true,
+      [
+        'Заполнение таблицы',
+        '| Колонка | Значение |',
+        '| Имя     | Тест     |',
+      ].join('\n')
+    );
+    expect(res).toContain('данными');
+    expect(res).toContain('| Колонка | Значение |');
+    expect(res).toContain('| Имя     | Тест     |');
+  });
+
+  it('should append fallback table for "заполняю таблицу ... данными"', () => {
+    const res = s.getCompletionInsertText(
+      'я заполняю таблицу "ИмяТаблицы" данными',
+      '',
+      true
+    );
+    expect(res).toContain(`| 'ИмяКолонки' |`);
+    expect(res).toContain(`| 'ЗначениеКолонки' |`);
+  });
 });
 
 describe('gherkin definition part overrides', () => {

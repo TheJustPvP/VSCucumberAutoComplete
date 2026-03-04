@@ -70,8 +70,54 @@
       {
         "command": "cucumberautocomplete.toggleExportScenarios",
         "title": "Cucumber: Toggle Export Scenarios"
+      },
+      {
+        "command": "cucumberautocomplete.vaLibrary.importJson",
+        "title": "VA Библиотека: Загрузить JSON"
+      },
+      {
+        "command": "cucumberautocomplete.vaLibrary.refresh",
+        "title": "VA Библиотека: Обновить"
+      },
+      {
+        "command": "cucumberautocomplete.vaLibrary.search",
+        "title": "VA Библиотека: Найти шаг"
+      },
+      {
+        "command": "cucumberautocomplete.vaLibrary.openJson",
+        "title": "VA Библиотека: Открыть JSON"
+      },
+      {
+        "command": "cucumberautocomplete.vaLibrary.insertStep",
+        "title": "VA Библиотека: Вставить шаг"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "cucumberautocomplete",
+          "title": "Библиотека известных шагов VA",
+          "icon": "img/cucumber.png"
+        }
+      ]
+    },
+    "views": {
+      "cucumberautocomplete": [
+        {
+          "id": "cucumberautocomplete.vaLibrary",
+          "name": "Библиотека известных шагов VA"
+        }
+      ]
+    },
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "cucumberautocomplete.vaLibrary.insertStep",
+          "when": "view == cucumberautocomplete.vaLibrary && viewItem == vaLibraryStep",
+          "group": "inline@1"
+        }
+      ]
+    },
     "configuration": {
       "title": "Cucumber Auto Complete settings",
       "properties": {

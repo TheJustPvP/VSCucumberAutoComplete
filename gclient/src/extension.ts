@@ -25,6 +25,7 @@ import {
     ServerOptions,
     TransportKind,
 } from 'vscode-languageclient/node';
+import { activateVALibrary } from './vaLibrary';
 
 type ExportScenario = {
     title: string;
@@ -531,6 +532,8 @@ export function activate(context: ExtensionContext) {
         exportScenariosStatusBar,
         exportScenariosDecoration
     );
+
+    context.subscriptions.push(...activateVALibrary(context));
 }
 
 export function deactivate(): Thenable<void> | undefined {

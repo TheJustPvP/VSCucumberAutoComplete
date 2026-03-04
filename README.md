@@ -81,6 +81,24 @@ Example:
 }
 ```
 
+### VA Step Library (no settings.json required)
+
+You can work without `cucumberautocomplete.vaStepsJson` in `settings.json`:
+
+1. Export steps from 1C to JSON (`va-step-library.json`) using template:
+   - `tools/1c/export_va_steps_json.bsl`
+2. In VS Code run:
+   - `Cucumber: Import VA JSON Library`
+3. Extension stores the library in:
+   - `.vscode/va-step-library.json`
+4. Open **Cucumber** activity bar -> **VA Step Library**:
+   - tree by folders
+   - search command: `Cucumber: Search VA Step`
+   - click step to insert into current `.feature`
+
+Detailed guide:
+- `docs/va-json-export.md`
+
 **`cucumberautocomplete.syncfeatures`** - Will get steps using count from the glob-style path.
 Same as for the `steps` setting - this path should be as strict as possible.
 
