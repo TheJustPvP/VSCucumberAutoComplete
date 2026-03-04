@@ -47,8 +47,65 @@ All the files, that match path provided, will be handled by the extension. So, i
 The Node will watch steps files for change and will automatically update steps in them.
 All the paths are relative to the app root.
 
+Also supports Vanessa Automation `.bsl` libraries. In `.bsl` files extension reads step comments in the format:
+```bsl
+//И я выполняю действие "Параметр"
+//@ИмяШага(Парам01)
+Функция ИмяШага(Парам01) Экспорт
+```
+So you can point `cucumberautocomplete.steps` to VA libraries and get suggestions directly in VS Code.
+
+Example:
+```javascript
+{
+    "cucumberautocomplete.steps": [
+        "../vanessa-automation/features/Libraries/**/Forms/Форма/Ext/Form/Module.bsl"
+    ],
+    "editor.quickSuggestions": {
+        "strings": true
+    }
+}
+```
+
+**`cucumberautocomplete.vaStepsJson`** - Path or array of paths to external JSON steps catalogs (hybrid mode).  
+Supports:
+- `string[]` where each string is a full step text
+- `{ "text": "...", "documentation": "..." }[]`
+
+Example:
+```javascript
+{
+    "cucumberautocomplete.vaStepsJson": [
+        ".vscode/va-steps.json"
+    ]
+}
+```
+
+### VA Step Library (no settings.json required)
+
+You can work without `cucumberautocomplete.vaStepsJson` in `settings.json`:
+
+1. Export steps from 1C to JSON (`va-step-library.json`) using template:
+   - `tools/1c/export_va_steps_json.bsl`
+2. In VS Code run:
+   - `Cucumber: Import VA JSON Library`
+3. Extension stores the library in:
+   - `.vscode/va-step-library.json`
+4. Open **Cucumber** activity bar -> **VA Step Library**:
+   - tree by folders
+   - search command: `Cucumber: Search VA Step`
+   - click step to insert into current `.feature`
+
+Detailed guide:
+- `docs/va-json-export.md`
+
 **`cucumberautocomplete.syncfeatures`** - Will get steps using count from the glob-style path.
 Same as for the `steps` setting - this path should be as strict as possible.
+
+**`cucumberautocomplete.includeExportScenarios`** - Parse workspace `.feature` files tagged with `@ExportScenarios` and use scenario names as callable steps.
+You can toggle it directly in VS Code using:
+- status bar button `Export Scenarios: On/Off`
+- command `Cucumber: Toggle Export Scenarios`
 
 **`cucumberautocomplete.strictGherkinCompletion`** - Strict comparing of declaration function and gherkin word.
 For ex. if step definition is `When(/I do something/)` - in case of `strictGherkinCompletion` is `true` - after typing `Given I` this step will not be shown in the suggestion list.

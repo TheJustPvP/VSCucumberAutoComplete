@@ -1,5 +1,6 @@
 import * as glob from 'glob';
 import * as fs from 'fs';
+import * as nodePath from 'path';
 
 import {
     createConnection,
@@ -15,6 +16,7 @@ import {
     DocumentRangeFormattingParams,
     FormattingOptions,
     Location,
+    Hover,
     ProposedFeatures,
     InitializeParams,
     DidChangeConfigurationNotification,
@@ -39,6 +41,8 @@ const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
+let vaBundledJsonPath = '';
+let vaUserJsonPath = '';
 
 //Path to the root of our workspace
 let workspaceRoot: string;
@@ -50,6 +54,12 @@ let pagesHandler: PagesHandler;
 
 connection.onInitialize((params: InitializeParams) => {
     workspaceRoot = params.rootPath || '';
+    const initOptions = (params.initializationOptions || {}) as {
+        vaBundledJsonPath?: string;
+        vaUserJsonPath?: string;
+    };
+    vaBundledJsonPath = initOptions.vaBundledJsonPath || '';
+    vaUserJsonPath = initOptions.vaUserJsonPath || '';
 
     const capabilities = params.capabilities;
 
@@ -69,12 +79,14 @@ connection.onInitialize((params: InitializeParams) => {
             //Completion will be triggered after every character pressing
             completionProvider: {
                 resolveProvider: true,
+                triggerCharacters: [' ', '"', '\'', ':'],
             },
             diagnosticProvider: {
                 interFileDependencies: false,
                 workspaceDiagnostics: false
             },
             definitionProvider: true,
+            hoverProvider: true,
             documentFormattingProvider: true,
             documentRangeFormattingProvider: true,
             documentOnTypeFormattingProvider: {
@@ -117,7 +129,8 @@ async function getSettings(forceReset?: boolean) {
 
 function shouldHandleSteps(settings: Settings) {
     const s = settings.steps;
-    return s && s.length ? true : false;
+    const j = settings.vaStepsJson;
+    return (s && s.length ? true : false) || (j && j.length ? true : false);
 }
 
 function shouldHandlePages(settings: Settings) {
@@ -142,9 +155,27 @@ async function revalidateAllDocuments() {
 }
 
 function watchStepsFiles(settings: Settings) {    
+    const isAbsoluteGlobPath = (path: string) =>
+        /^[a-zA-Z]:[\\/]/.test(path) || path.startsWith('\\\\');
+    const resolveGlobPath = (path: string) =>
+        isAbsoluteGlobPath(path) ? path : workspaceRoot + '/' + path;
+
     settings.steps.forEach((path) => {
         glob
-            .sync(workspaceRoot + '/' + path, { ignore: '.gitignore' })
+            .sync(resolveGlobPath(path), { ignore: '.gitignore' })
+            .forEach((f) => {
+                fs.unwatchFile(f);
+                fs.watchFile(f, async () => {
+                    const settings = await getSettings();
+                    populateHandlers(settings);
+                    revalidateAllDocuments();
+                });
+            });
+    });
+
+    settings.vaStepsJson.forEach((path) => {
+        glob
+            .sync(resolveGlobPath(path), { ignore: '.gitignore' })
             .forEach((f) => {
                 fs.unwatchFile(f);
                 fs.watchFile(f, async () => {
@@ -157,9 +188,22 @@ function watchStepsFiles(settings: Settings) {
 }
 
 function getSettingsFromBase(baseSettings: BaseSettings) {
+    const workspaceVaLibrary = '.vscode/va-step-library.json';
+    const bundledVaLibraryFallback = nodePath.resolve(
+        __dirname,
+        '../../resources/default-va-step-library.json'
+    );
+    const configuredVaSteps = new Array<string>().concat(baseSettings.vaStepsJson ?? []);
+    const vaStepsJson = configuredVaSteps.length
+        ? configuredVaSteps
+        : [workspaceVaLibrary, vaUserJsonPath, vaBundledJsonPath, bundledVaLibraryFallback]
+            .filter((p) => !!p);
+
     const settings: Settings = {
         ...baseSettings,
+        includeExportScenarios: baseSettings.includeExportScenarios ?? false,
         steps: new Array<string>().concat(baseSettings.steps ?? []),
+        vaStepsJson,
     };
     return settings;
 }
@@ -215,6 +259,7 @@ function populateHandlers(settings: Settings) {
 documents.onDidOpen(async () => {
     const settings = await getSettings(true);
     initStepsAndPagesSetup(settings);
+    revalidateAllDocuments();
 });
 
 connection.onCompletion(
@@ -243,13 +288,17 @@ connection.onCompletionResolve((item: CompletionItem) => {
     return item;
 });
 
-function validate(text: string, settings: Settings) {
+function validate(text: string, settings: Settings, rawText?: string) {
+    const sourceText = rawText || text;
+    if (isExportScenariosDocument(sourceText)) {
+        return [] as Diagnostic[];
+    }
     return text.split(/\r?\n/g).reduce((res, line, i) => {
         let diagnostic;
         if (
             shouldHandleSteps(settings) &&
       stepsHandler &&
-      (diagnostic = stepsHandler.validate(line, i, text))
+      (diagnostic = stepsHandler.validate(line, i, sourceText))
         ) {
             res.push(diagnostic);
         } else if (shouldHandlePages(settings) && pagesHandler) {
@@ -260,12 +309,23 @@ function validate(text: string, settings: Settings) {
     }, [] as Diagnostic[]);
 }
 
+function isExportScenariosDocument(text: string) {
+    const lower = text.toLowerCase();
+    return lower.includes('@exportscenarios') || /(^|\s)@exportscenarios(\s|$)/im.test(text);
+}
+
 connection.languages.diagnostics.on(async (params) => {
     const document = documents.get(params.textDocument.uri);
     if (document !== undefined) {
         const settings = await getSettings();
         const text = document.getText();
-        const diagnostics = validate(clearGherkinComments(text), settings);
+        if (isExportScenariosDocument(text)) {
+            return {
+                kind: DocumentDiagnosticReportKind.Full,
+                items: [],
+            } satisfies DocumentDiagnosticReport;
+        }
+        const diagnostics = validate(clearGherkinComments(text), settings, text);
         return {
             kind: DocumentDiagnosticReportKind.Full,
             items: diagnostics,
@@ -295,6 +355,34 @@ connection.onDefinition(async (position: TextDocumentPositionParams) => {
         return stepsHandler.getDefinition(line, text);
     }
     return Location.create(uri, Range.create(pos, pos));
+});
+
+connection.onHover(async (position: TextDocumentPositionParams): Promise<Hover | null> => {
+    const settings = await getSettings();
+    const textDocument = documents.get(position.textDocument.uri);
+    const text = textDocument?.getText() || '';
+    const line = text.split(/\r?\n/g)[position.position.line];
+    if (shouldHandleSteps(settings) && stepsHandler) {
+        const documentation = stepsHandler.getHover(line, text);
+        if (documentation) {
+            const doc = documentation.trim();
+            const isMultiline = /\r?\n/.test(doc);
+            if (isMultiline) {
+                // Export scenarios are shown inline in the editor.
+                return null;
+            }
+            const value = isMultiline
+                ? `**Export Scenario**\n\n\`\`\`gherkin\n${doc}\n\`\`\``
+                : doc;
+            return {
+                contents: {
+                    kind: 'markdown',
+                    value,
+                },
+            };
+        }
+    }
+    return null;
 });
 
 function getIndent(options: FormattingOptions) {
