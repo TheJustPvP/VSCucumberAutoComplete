@@ -1,5 +1,6 @@
-import * as path from 'path';
+﻿import * as path from 'path';
 import {
+    CancellationToken,
     commands,
     Disposable,
     Event,
@@ -7,7 +8,9 @@ import {
     ExtensionContext,
     QuickPickItem,
     Selection,
+    ThemeColor,
     ThemeIcon,
+    TextDocumentContentProvider,
     TextEditorRevealType,
     TreeDataProvider,
     TreeItem,
@@ -15,6 +18,7 @@ import {
     TreeView,
     Uri,
     ViewColumn,
+    languages,
     window,
     workspace,
 } from 'vscode';
@@ -38,11 +42,11 @@ type VaLibraryRawStep = {
     name?: string;
     step?: string;
     // Russian keys from 1C export
-    ИмяШага?: string;
-    ОписаниеШага?: string;
-    ПолныйТипШага?: string;
-    Файл?: string;
-    ИмяПроцедуры?: string;
+    'ИмяШага'?: string;
+    'ОписаниеШага'?: string;
+    'ПолныйТипШага'?: string;
+    'Файл'?: string;
+    'ИмяПроцедуры'?: string;
 };
 
 type VaLibraryJson = {
@@ -80,26 +84,48 @@ type FlatStep = {
 
 const LIBRARY_FILE_NAME = 'va-step-library.json';
 const WORKSPACE_LIBRARY_RELATIVE = '.vscode/va-step-library.json';
+const STEP_DETAILS_SCHEME = 'va-library-step';
+const RU_STEP_NAME = '\u0418\u043c\u044f\u0428\u0430\u0433\u0430';
+const RU_STEP_DESC = '\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435\u0428\u0430\u0433\u0430';
+const RU_STEP_PATH = '\u041f\u043e\u043b\u043d\u044b\u0439\u0422\u0438\u043f\u0428\u0430\u0433\u0430';
+const RU_STEP_FILE = '\u0424\u0430\u0439\u043b';
+const RU_STEP_PROC = '\u0418\u043c\u044f\u041f\u0440\u043e\u0446\u0435\u0434\u0443\u0440\u044b';
+
+class StepDetailsProvider implements TextDocumentContentProvider {
+    private readonly onDidChangeEmitter = new EventEmitter<Uri>();
+    private readonly content = new Map<string, string>();
+
+    readonly onDidChange = this.onDidChangeEmitter.event;
+
+    provideTextDocumentContent(uri: Uri, _token: CancellationToken): string {
+        return this.content.get(uri.toString()) || '';
+    }
+
+    setContent(uri: Uri, text: string) {
+        this.content.set(uri.toString(), text);
+        this.onDidChangeEmitter.fire(uri);
+    }
+}
 
 class VALibraryProvider implements TreeDataProvider<LibraryNode> {
     private readonly actionNodes: ActionNode[] = [
         {
             type: 'action',
-            label: 'Загрузить JSON',
-            description: 'Импорт',
+            label: '\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c JSON',
+            description: '\u0418\u043c\u043f\u043e\u0440\u0442',
             command: 'cucumberautocomplete.vaLibrary.importJson',
             icon: 'cloud-download',
         },
         {
             type: 'action',
-            label: 'Найти шаг',
-            description: 'Поиск',
+            label: '\u041d\u0430\u0439\u0442\u0438 \u0448\u0430\u0433',
+            description: '\u041f\u043e\u0438\u0441\u043a',
             command: 'cucumberautocomplete.vaLibrary.search',
             icon: 'search',
         },
         {
             type: 'action',
-            label: 'Обновить',
+            label: '\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c',
             description: 'Refresh',
             command: 'cucumberautocomplete.vaLibrary.refresh',
             icon: 'refresh',
@@ -108,6 +134,7 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
     private rootNodes: LibraryNode[] = [];
     private flatSteps: FlatStep[] = [];
     private tree?: TreeView<LibraryNode>;
+    private detailsProvider?: StepDetailsProvider;
     private readonly onDidChangeTreeDataEmitter = new EventEmitter<LibraryNode | undefined>();
 
     readonly onDidChangeTreeData: Event<LibraryNode | undefined> =
@@ -135,20 +162,21 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
 
         const item = new TreeItem(element.step.text, TreeItemCollapsibleState.None);
         item.contextValue = 'vaLibraryStep';
+        item.iconPath = this.getStepColorIcon(element.step.text);
         item.description = element.step.description || '';
         item.tooltip = [
             element.step.text,
             element.step.description || '',
             element.step.path || element.step.section || '',
-            element.step.file ? `Файл: ${element.step.file}` : '',
-            element.step.procedure ? `Процедура: ${element.step.procedure}` : '',
+            element.step.file ? `\u0424\u0430\u0439\u043b: ${element.step.file}` : '',
+            element.step.procedure ? `\u041f\u0440\u043e\u0446\u0435\u0434\u0443\u0440\u0430: ${element.step.procedure}` : '',
         ]
             .filter(Boolean)
             .join('\n');
         item.command = {
             title: 'Insert Step',
             command: 'cucumberautocomplete.vaLibrary.insertStep',
-            arguments: [element.step.text],
+            arguments: [element],
         };
         return item;
     }
@@ -189,6 +217,10 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
         this.tree = tree;
     }
 
+    setDetailsProvider(provider: StepDetailsProvider) {
+        this.detailsProvider = provider;
+    }
+
     async refresh() {
         const parsed = await this.readLibrary();
         const steps = this.normalizeSteps(parsed);
@@ -199,7 +231,7 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
 
     async searchAndReveal() {
         if (!this.flatSteps.length) {
-            window.showInformationMessage('VA библиотека шагов пуста. Сначала импортируйте JSON.');
+            window.showInformationMessage('VA \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0430 \u0448\u0430\u0433\u043e\u0432 \u043f\u0443\u0441\u0442\u0430. \u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0438\u043c\u043f\u043e\u0440\u0442\u0438\u0440\u0443\u0439\u0442\u0435 JSON.');
             return;
         }
         const items: (QuickPickItem & { step: VaLibraryStep })[] = this.flatSteps.map((s) => ({
@@ -212,7 +244,7 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
         const selected = await window.showQuickPick(items, {
             matchOnDescription: true,
             matchOnDetail: true,
-            placeHolder: 'Найдите шаг в библиотеке VA',
+            placeHolder: '\u041d\u0430\u0439\u0434\u0438\u0442\u0435 \u0448\u0430\u0433 \u0432 \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0435 VA',
         });
         if (!selected) {
             return;
@@ -228,25 +260,195 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
         });
     }
 
-    async insertStep(stepText: string) {
+    async insertStep(target: unknown) {
+        const step = this.resolveStep(target);
+        const stepText = step?.text;
+        if (!stepText) {
+            return;
+        }
         const editor = window.activeTextEditor;
         if (!editor) {
             return;
         }
+        const finalText = this.appendTableFromDescription(stepText, step.description);
         await editor.edit((builder) => {
             const selection = editor.selection;
-            builder.replace(selection, stepText);
+            builder.replace(selection, finalText);
         });
         const pos = editor.selection.active;
         editor.selection = new Selection(pos, pos);
         editor.revealRange(editor.selection, TextEditorRevealType.InCenterIfOutsideViewport);
     }
 
+    async showStepDetails(target: unknown) {
+        const resolved = this.resolveStep(target);
+        if (resolved && this.detailsProvider) {
+            const wrappedDescription = this.wrapDescriptionForPreview(resolved.description);
+            const body = [
+                resolved.text,
+                '',
+                ...(wrappedDescription ? wrappedDescription.split('\n') : []),
+            ].join('\n');
+            const key = encodeURIComponent(resolved.text.slice(0, 80));
+            const uri = Uri.parse(`${STEP_DETAILS_SCHEME}://details/${key}.feature`);
+            this.detailsProvider.setContent(uri, body);
+            const doc = await workspace.openTextDocument(uri);
+            if (doc.languageId !== 'feature') {
+                await languages.setTextDocumentLanguage(doc, 'feature');
+            }
+            await window.showTextDocument(doc, { preview: false, viewColumn: ViewColumn.Beside });
+            return;
+        }
+        return;
+    }
+
+    resolveStepText(target: unknown): string | undefined {
+        if (typeof target === 'string') {
+            return target;
+        }
+        if (target && typeof target === 'object') {
+            const node = target as { type?: string; step?: { text?: string }; text?: string };
+            if (node.type === 'step' && typeof node.step?.text === 'string') {
+                return node.step.text;
+            }
+            if (typeof node.text === 'string') {
+                return node.text;
+            }
+        }
+        return undefined;
+    }
+
+    private wrapDescriptionForPreview(description?: string, width = 100) {
+        if (!description || !description.trim()) {
+            return '';
+        }
+        const lines = description.replace(/\r/g, '').split('\n');
+        const wrappedLines: string[] = [];
+
+        const pushWrapped = (line: string) => {
+            const words = line.trim().split(/\s+/).filter(Boolean);
+            if (!words.length) {
+                wrappedLines.push('');
+                return;
+            }
+            let current = words[0];
+            for (let i = 1; i < words.length; i++) {
+                const next = words[i];
+                if ((current + ' ' + next).length > width) {
+                    wrappedLines.push(current);
+                    current = next;
+                } else {
+                    current += ' ' + next;
+                }
+            }
+            wrappedLines.push(current);
+        };
+
+        for (const rawLine of lines) {
+            const line = rawLine.replace(/\t/g, '    ');
+            const trimmed = line.trim();
+            if (!trimmed) {
+                wrappedLines.push('');
+                continue;
+            }
+
+            const isFence = trimmed.startsWith('```');
+            const isTable = trimmed.includes('|');
+            const isBullet = /^[-*]\s+/.test(trimmed);
+            const isHeader = /^#+\s+/.test(trimmed);
+            if (isFence || isTable || isBullet || isHeader) {
+                wrappedLines.push(line);
+                continue;
+            }
+
+            pushWrapped(line);
+        }
+
+        return wrappedLines.join('\n');
+    }
+
+    resolveStep(target: unknown): VaLibraryStep | undefined {
+        if (typeof target === 'string') {
+            return this.flatSteps.find((s) => s.step.text === target)?.step || { text: target };
+        }
+        if (target && typeof target === 'object') {
+            const node = target as { type?: string; step?: VaLibraryStep; text?: string };
+            if (node.type === 'step' && node.step?.text) {
+                return node.step;
+            }
+            if (typeof node.text === 'string') {
+                return this.flatSteps.find((s) => s.step.text === node.text)?.step || { text: node.text };
+            }
+        }
+        return undefined;
+    }
+
+    private appendTableFromDescription(insertText: string, description?: string) {
+        const table = this.extractTableTemplate(description) || this.getFallbackTable(insertText);
+        if (!table) {
+            return insertText;
+        }
+        if (insertText.includes('\n|')) {
+            return insertText;
+        }
+        return `${insertText}\n${table}`;
+    }
+
+    private extractTableTemplate(description?: string) {
+        if (!description || !description.trim()) {
+            return '';
+        }
+        const lines = description.replace(/\r/g, '').split('\n');
+        const rows: string[] = [];
+        for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (line.startsWith('```')) {
+                continue;
+            }
+            const pipeCount = (line.match(/\|/g) || []).length;
+            if (pipeCount >= 2) {
+                let row = line;
+                if (!row.startsWith('|')) {
+                    row = `| ${row}`;
+                }
+                if (!row.endsWith('|')) {
+                    row = `${row} |`;
+                }
+                rows.push(row);
+                continue;
+            }
+            if (rows.length) {
+                break;
+            }
+        }
+        return rows.length >= 2 ? rows.join('\n') : '';
+    }
+
+    private getFallbackTable(stepText: string) {
+        const normalized = stepText.toLowerCase();
+        const hasTableContext = /\u0432 \u0442\u0430\u0431\u043b\u0438\u0446/.test(normalized) || /\u0437\u0430\u043f\u043e\u043b\u043d\u044f\u044e \u0442\u0430\u0431\u043b\u0438\u0446/.test(normalized);
+        const hasRowIntent = /\u043f\u0435\u0440\u0435\u0445\u043e\u0436\u0443 \u043a \u0441\u0442\u0440\u043e\u043a\u0435/.test(normalized) || /(^|\s)\u0434\u0430\u043d\u043d\u044b\u043c\u0438(\s|$)/.test(normalized);
+        const hasParamIntent = /\u0441 \u043f\u0430\u0440\u0430\u043c\u0435\u0442\u0440/.test(normalized) && /:\s*$/.test(normalized);
+        if (!(hasTableContext && hasRowIntent) && !hasParamIntent) {
+            return '';
+        }
+        if (hasParamIntent && !(hasTableContext && hasRowIntent)) {
+            return [
+                "| '\u041f\u0430\u0440\u0430\u043c\u0435\u0442\u0440' | '\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435' |",
+                "| '\u0418\u043c\u044f\u041f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u0430' | '\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435\u041f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u0430' |",
+            ].join('\n');
+        }
+        return [
+            "| '\u0418\u043c\u044f\u041a\u043e\u043b\u043e\u043d\u043a\u0438' |",
+            "| '\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435\u041a\u043e\u043b\u043e\u043d\u043a\u0438' |",
+        ].join('\n');
+    }
+
     async importFromJsonFile() {
         const selected = await window.showOpenDialog({
             canSelectMany: false,
             filters: { JSON: ['json'] },
-            openLabel: 'Импортировать библиотеку шагов VA',
+            openLabel: '\u0418\u043c\u043f\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0443 \u0448\u0430\u0433\u043e\u0432 VA',
         });
         if (!selected?.length) {
             return;
@@ -254,7 +456,7 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
 
         const workspaceFolder = workspace.workspaceFolders?.[0];
         if (!workspaceFolder) {
-            window.showErrorMessage('Откройте папку проекта в VS Code перед импортом библиотеки VA.');
+            window.showErrorMessage('\u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u043f\u0430\u043f\u043a\u0443 \u043f\u0440\u043e\u0435\u043a\u0442\u0430 \u0432 VS Code \u043f\u0435\u0440\u0435\u0434 \u0438\u043c\u043f\u043e\u0440\u0442\u043e\u043c \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0438 VA.');
             return;
         }
 
@@ -265,16 +467,16 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
             const content = await workspace.fs.readFile(selected[0]);
             await workspace.fs.writeFile(targetFile, content);
             await this.refresh();
-            window.showInformationMessage(`VA библиотека импортирована: ${targetFile.fsPath}`);
+            window.showInformationMessage(`VA \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0430 \u0438\u043c\u043f\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0430: ${targetFile.fsPath}`);
         } catch (error) {
-            window.showErrorMessage(`Ошибка импорта VA библиотеки: ${String(error)}`);
+            window.showErrorMessage(`\u041e\u0448\u0438\u0431\u043a\u0430 \u0438\u043c\u043f\u043e\u0440\u0442\u0430 VA \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0438: ${String(error)}`);
         }
     }
 
     async openLibraryJson() {
         const workspaceFolder = workspace.workspaceFolders?.[0];
         if (!workspaceFolder) {
-            window.showErrorMessage('Откройте папку проекта в VS Code.');
+            window.showErrorMessage('\u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u043f\u0430\u043f\u043a\u0443 \u043f\u0440\u043e\u0435\u043a\u0442\u0430 \u0432 VS Code.');
             return;
         }
         const targetFile = Uri.joinPath(workspaceFolder.uri, WORKSPACE_LIBRARY_RELATIVE);
@@ -283,7 +485,7 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
             await window.showTextDocument(doc, { preview: false, viewColumn: ViewColumn.Active });
         } catch {
             window.showWarningMessage(
-                `Файл библиотеки не найден: ${LIBRARY_FILE_NAME}. Выполните "Import VA JSON Library".`
+                `\u0424\u0430\u0439\u043b \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0438 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d: ${LIBRARY_FILE_NAME}. \u0412\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u0435 "Import VA JSON Library".`
             );
         }
     }
@@ -306,11 +508,11 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
         const arr = Array.isArray(json) ? json : json.steps || [];
         return arr
             .map((s) => {
-                const text = (s.text || s.ИмяШага || s.step || s.name || '').trim();
+                const text = (s.text || s[RU_STEP_NAME] || s.step || s.name || '').trim();
                 if (!text) {
                     return undefined;
                 }
-                const rawPath = (s.path || s.section || s.ПолныйТипШага || '').trim();
+                const rawPath = (s.path || s.section || s[RU_STEP_PATH] || '').trim();
                 const path = rawPath
                     ? rawPath
                           .replace(/\s*\.\s*/g, '/')
@@ -319,11 +521,11 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
 
                 return {
                     text,
-                    description: (s.description || s.ОписаниеШага || '').trim() || undefined,
+                    description: (s.description || s[RU_STEP_DESC] || '').trim() || undefined,
                     path,
                     section: (s.section || '').trim() || undefined,
-                    file: (s.file || s.Файл || '').trim() || undefined,
-                    procedure: (s.procedure || s.ИмяПроцедуры || '').trim() || undefined,
+                    file: (s.file || s[RU_STEP_FILE] || '').trim() || undefined,
+                    procedure: (s.procedure || s[RU_STEP_PROC] || '').trim() || undefined,
                 } as VaLibraryStep;
             })
             .filter((s): s is VaLibraryStep => !!s);
@@ -344,9 +546,29 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
         return undefined;
     }
 
+    private getStepColorIcon(stepText: string) {
+        const text = stepText.trim().toLowerCase();
+        if (text.startsWith('\u0434\u0430\u043d\u043e ') || text.startsWith('given ')) {
+            return new ThemeIcon('circle-filled', new ThemeColor('charts.green'));
+        }
+        if (text.startsWith('\u043a\u043e\u0433\u0434\u0430 ') || text.startsWith('when ')) {
+            return new ThemeIcon('circle-filled', new ThemeColor('charts.blue'));
+        }
+        if (text.startsWith('\u0442\u043e\u0433\u0434\u0430 ') || text.startsWith('then ')) {
+            return new ThemeIcon('circle-filled', new ThemeColor('charts.orange'));
+        }
+        if (text.startsWith('\u0438 ') || text.startsWith('and ')) {
+            return new ThemeIcon('circle-filled', new ThemeColor('charts.yellow'));
+        }
+        if (text.startsWith('\u043d\u043e ') || text.startsWith('but ')) {
+            return new ThemeIcon('circle-filled', new ThemeColor('charts.red'));
+        }
+        return new ThemeIcon('circle-filled', new ThemeColor('disabledForeground'));
+    }
+
     private buildFlatSteps(steps: VaLibraryStep[]): FlatStep[] {
         return steps.map((step) => {
-            const base = step.path || step.section || 'Без раздела';
+            const base = step.path || step.section || '\u0411\u0435\u0437 \u0440\u0430\u0437\u0434\u0435\u043b\u0430';
             const normalizedPath = base
                 .replace(/\\/g, '/')
                 .split('/')
@@ -354,7 +576,7 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
                 .filter(Boolean)
                 .join('/');
             return {
-                path: normalizedPath || 'Без раздела',
+                path: normalizedPath || '\u0411\u0435\u0437 \u0440\u0430\u0437\u0434\u0435\u043b\u0430',
                 step,
             };
         });
@@ -416,11 +638,13 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
 
 export function activateVALibrary(context: ExtensionContext): Disposable[] {
     const provider = new VALibraryProvider();
+    const detailsProvider = new StepDetailsProvider();
     const tree = window.createTreeView('cucumberautocomplete.vaLibrary', {
         treeDataProvider: provider,
         showCollapseAll: true,
     });
     provider.setTree(tree);
+    provider.setDetailsProvider(detailsProvider);
 
     const refreshCommand = commands.registerCommand(
         'cucumberautocomplete.vaLibrary.refresh',
@@ -440,7 +664,13 @@ export function activateVALibrary(context: ExtensionContext): Disposable[] {
     );
     const insertStepCommand = commands.registerCommand(
         'cucumberautocomplete.vaLibrary.insertStep',
-        async (stepText: string) => provider.insertStep(stepText)
+        async (target: unknown) => {
+            await provider.insertStep(target);
+        }
+    );
+    const showStepDetailsCommand = commands.registerCommand(
+        'cucumberautocomplete.vaLibrary.showStepDetails',
+        async (target: unknown) => provider.showStepDetails(target)
     );
 
     const watcher = workspace.createFileSystemWatcher(`**/${LIBRARY_FILE_NAME}`);
@@ -451,13 +681,16 @@ export function activateVALibrary(context: ExtensionContext): Disposable[] {
     void provider.refresh();
 
     return [
+        workspace.registerTextDocumentContentProvider(STEP_DETAILS_SCHEME, detailsProvider),
         tree,
         refreshCommand,
         importCommand,
         openJsonCommand,
         searchCommand,
         insertStepCommand,
+        showStepDetailsCommand,
         watcher,
     ];
 }
+
 

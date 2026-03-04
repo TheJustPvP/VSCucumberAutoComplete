@@ -503,6 +503,14 @@ describe('getCompletionInsertText', () => {
     });
   });
 
+  it('should continue step text case-insensitively', () => {
+    const res = s.getCompletionInsertText(
+      'Я подключаю клиент тестирования "ИмяКлиентаТестирования" из таблицы клиентов тестирования',
+      'я подключаю клиент '
+    );
+    expect(res).toStrictEqual('тестирования "ИмяКлиентаТестирования" из таблицы клиентов тестирования');
+  });
+
   it('should append table from documentation for va-like steps', () => {
     const res = s.getCompletionInsertText(
       'я заполняю таблицу "ИмяТаблицы" данными',
@@ -522,6 +530,16 @@ describe('getCompletionInsertText', () => {
   it('should append fallback table for "заполняю таблицу ... данными"', () => {
     const res = s.getCompletionInsertText(
       'я заполняю таблицу "ИмяТаблицы" данными',
+      '',
+      true
+    );
+    expect(res).toContain(`| 'ИмяКолонки' |`);
+    expect(res).toContain(`| 'ЗначениеКолонки' |`);
+  });
+
+  it('should append fallback table for "в таблице ... перехожу к строке"', () => {
+    const res = s.getCompletionInsertText(
+      'И в таблице "ИмяТаблицы" я перехожу к строке',
       '',
       true
     );

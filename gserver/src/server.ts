@@ -70,6 +70,7 @@ connection.onInitialize((params: InitializeParams) => {
             //Completion will be triggered after every character pressing
             completionProvider: {
                 resolveProvider: true,
+                triggerCharacters: [' ', '"', '\'', ':'],
             },
             diagnosticProvider: {
                 interFileDependencies: false,

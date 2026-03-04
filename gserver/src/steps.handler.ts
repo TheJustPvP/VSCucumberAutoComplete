@@ -1,4 +1,4 @@
-import * as glob from 'glob';
+﻿import * as glob from 'glob';
 import * as commentParser from 'doctrine';
 
 import {
@@ -65,11 +65,11 @@ type ExternalStepEntry = string | {
   name?: string;
   step?: string;
   // Russian keys from 1C export
-  ИмяШага?: string;
-  ОписаниеШага?: string;
-  ПолныйТипШага?: string;
-  Файл?: string;
-  ИмяПроцедуры?: string;
+  '\u0418\u043c\u044f\u0428\u0430\u0433\u0430'?: string;
+  '\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435\u0428\u0430\u0433\u0430'?: string;
+  '\u041f\u043e\u043b\u043d\u044b\u0439\u0422\u0438\u043f\u0428\u0430\u0433\u0430'?: string;
+  '\u0424\u0430\u0439\u043b'?: string;
+  '\u0418\u043c\u044f\u041f\u0440\u043e\u0446\u0435\u0434\u0443\u0440\u044b'?: string;
 };
 
 type StepBuildOptions = {
@@ -439,7 +439,7 @@ export default class StepsHandler {
         for (let i = 0; i < length; i++) {
             currArray.push(strArray.shift()!);
             try {
-                const r = new RegExp('^' + escapeRegExp(currArray.join(' ')));
+                const r = new RegExp('^' + escapeRegExp(currArray.join(' ')), 'i');
                 if (!r.test(stepPart)) {
                     res = new Array<string>()
                         .concat(currArray.slice(-1), strArray)
@@ -506,8 +506,19 @@ export default class StepsHandler {
         const tableLines: string[] = [];
         for (const line of lines) {
             const trimmed = line.trim();
-            if (/^\|.*\|$/.test(trimmed)) {
-                tableLines.push(trimmed);
+            if (trimmed.startsWith('```')) {
+                continue;
+            }
+            const pipeCount = (trimmed.match(/\|/g) || []).length;
+            if (pipeCount >= 2) {
+                let row = trimmed;
+                if (!row.startsWith('|')) {
+                    row = `| ${row}`;
+                }
+                if (!row.endsWith('|')) {
+                    row = `${row} |`;
+                }
+                tableLines.push(row);
                 continue;
             }
             if (tableLines.length) {
@@ -520,14 +531,24 @@ export default class StepsHandler {
 
     getFallbackVaTableTemplate(text: string) {
         const normalized = text.toLowerCase();
-        const isTableFillStep = /заполняю таблиц/.test(normalized) &&
-            /(^|\s)данными(\s|$)/.test(normalized);
-        if (!isTableFillStep) {
+        const hasTableContext = /\u0432 \u0442\u0430\u0431\u043b\u0438\u0446/.test(normalized) ||
+            /\u0437\u0430\u043f\u043e\u043b\u043d\u044f\u044e \u0442\u0430\u0431\u043b\u0438\u0446/.test(normalized);
+        const hasRowIntent = /\u043f\u0435\u0440\u0435\u0445\u043e\u0436\u0443 \u043a \u0441\u0442\u0440\u043e\u043a\u0435/.test(normalized) ||
+            /(^|\s)\u0434\u0430\u043d\u043d\u044b\u043c\u0438(\s|$)/.test(normalized);
+        const hasParamIntent = /\u0441 \u043f\u0430\u0440\u0430\u043c\u0435\u0442\u0440/.test(normalized) &&
+            /:\s*$/.test(normalized);
+        if (!(hasTableContext && hasRowIntent) && !hasParamIntent) {
             return '';
         }
+        if (hasParamIntent && !(hasTableContext && hasRowIntent)) {
+            return [
+                "| '\u041f\u0430\u0440\u0430\u043c\u0435\u0442\u0440' | '\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435' |",
+                "| '\u0418\u043c\u044f\u041f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u0430' | '\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435\u041f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u0430' |",
+            ].join('\n');
+        }
         return [
-            "| 'ИмяКолонки' |",
-            "| 'ЗначениеКолонки' |",
+            "| '\u0418\u043c\u044f\u041a\u043e\u043b\u043e\u043d\u043a\u0438' |",
+            "| '\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435\u041a\u043e\u043b\u043e\u043d\u043a\u0438' |",
         ].join('\n');
     }
 
@@ -712,7 +733,7 @@ export default class StepsHandler {
             }
 
             const [, beforeGherkin, gherkinWord, , stepPart] = gherkinMatch;
-            // Filter noisy "technical" steps like `И "Истина" тогда`.
+            // Filter noisy "technical" steps like `Р "РСЃС‚РёРЅР°" С‚РѕРіРґР°`.
             if (/^\s*['"]/.test(stepPart)) {
                 return steps;
             }
@@ -742,7 +763,7 @@ export default class StepsHandler {
     }
 
     getBSLAddStepCalls(filePath: string, fileContent: string, comments: JSDocComments) {
-        const callsRegex = /ДобавитьШагВМассивТестов\s*\(([\s\S]*?)\)\s*;/gi;
+        const callsRegex = /\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c\u0428\u0430\u0433\u0412\u041c\u0430\u0441\u0441\u0438\u0432\u0422\u0435\u0441\u0442\u043e\u0432\s*\(([\s\S]*?)\)\s*;/gi;
         const quotedRegex = /"((?:""|[^"])*)"/g;
         const steps = new Array<Step>();
         let callMatch: RegExpExecArray | null;
@@ -753,7 +774,7 @@ export default class StepsHandler {
                 (m) => m[1].replace(/""/g, '"')
             );
             // Typical VA format:
-            // ДобавитьШагВМассивТестов(..., "Snippet", "Procedure", "Gherkin text", ...)
+            // Р”РѕР±Р°РІРёС‚СЊРЁР°РіР’РњР°СЃСЃРёРІРўРµСЃС‚РѕРІ(..., "Snippet", "Procedure", "Gherkin text", ...)
             const stepLine = quotedArgs[2];
             if (!stepLine) {
                 continue;
@@ -846,11 +867,52 @@ export default class StepsHandler {
         }
 
         this.getExternalJsonSteps(root).forEach((step) => {
+            const existing = this.elements.find((el) => el.id === step.id);
+            if (existing) {
+                existing.documentation = this.pickBetterDocumentation(
+                    existing.documentation,
+                    step.documentation
+                );
+                return;
+            }
             if (!this.elementsHash[step.id]) {
                 this.elements.push(step);
                 this.elementsHash[step.id] = true;
             }
         });
+    }
+
+    pickBetterDocumentation(currentDoc: string, candidateDoc: string) {
+        if (!candidateDoc || !candidateDoc.trim()) {
+            return currentDoc;
+        }
+        if (!currentDoc || !currentDoc.trim()) {
+            return candidateDoc;
+        }
+        const currentTable = this.extractTableTemplate(currentDoc);
+        const candidateTable = this.extractTableTemplate(candidateDoc);
+        if (!currentTable && candidateTable) {
+            return candidateDoc;
+        }
+        return candidateDoc.length > currentDoc.length ? candidateDoc : currentDoc;
+    }
+
+    normalizeStepTextForMerge(text: string) {
+        return text
+            .toLowerCase()
+            .replace(/'([^'\r\n]*)'/g, '"$1"')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    getBestDocumentationForStepText(stepText: string, currentDoc: string) {
+        const normalized = this.normalizeStepTextForMerge(stepText);
+        return this.elements.reduce((bestDoc, el) => {
+            if (this.normalizeStepTextForMerge(el.text) !== normalized) {
+                return bestDoc;
+            }
+            return this.pickBetterDocumentation(bestDoc, el.documentation);
+        }, currentDoc || '');
     }
 
     getExternalJsonSteps(root: string) {
@@ -866,7 +928,11 @@ export default class StepsHandler {
                 let parsed: ExternalStepEntry[];
                 try {
                     const json = JSON.parse(content);
-                    parsed = Array.isArray(json) ? json : [];
+                    parsed = Array.isArray(json)
+                        ? json
+                        : Array.isArray(json?.steps)
+                            ? json.steps
+                            : [];
                 } catch {
                     return;
                 }
@@ -874,14 +940,14 @@ export default class StepsHandler {
                 parsed.forEach((entry, i) => {
                     const text = typeof entry === 'string'
                         ? entry
-                        : (entry.text || entry.ИмяШага || entry.step || entry.name || '');
+                        : (entry.text || (entry as Record<string, string>)['ИмяШага'] || entry.step || entry.name || '');
                     const doc = typeof entry === 'string'
                         ? undefined
                         : (
                             entry.documentation ||
                             entry.description ||
-                            entry.ОписаниеШага ||
-                            entry.ПолныйТипШага
+                            (entry as Record<string, string>)['ОписаниеШага'] ||
+                            (entry as Record<string, string>)['ПолныйТипШага']
                         );
                     if (!text || !text.trim()) {
                         return;
@@ -934,7 +1000,7 @@ export default class StepsHandler {
                 return res;
             }
 
-            const scenarioHeaderReg = /^\s*(?:Сценарий|Scenario|Структура сценария):\s*(.+?)\s*$/i;
+            const scenarioHeaderReg = /^\s*(?:\u0421\u0446\u0435\u043d\u0430\u0440\u0438\u0439|Scenario|\u0421\u0442\u0440\u0443\u043a\u0442\u0443\u0440\u0430 \u0441\u0446\u0435\u043d\u0430\u0440\u0438\u044f):\s*(.+?)\s*$/i;
             for (let i = 0; i < lines.length; i++) {
                 const headerMatch = lines[i].match(scenarioHeaderReg);
                 if (!headerMatch) {
@@ -1119,7 +1185,7 @@ export default class StepsHandler {
         //We don't need last word in our step part due to it could be incompleted
         let stepPart = stepPartBase || '';
         stepPart = stepPart.replace(/[^\s]+$/, '');
-        const res = this.elements
+        const completionItems = this.elements
         //Filter via gherkin words comparing if strictGherkinCompletion option provided
             .filter((step) => {
                 if (this.settings.strictGherkinCompletion) {
@@ -1141,21 +1207,55 @@ export default class StepsHandler {
             .filter((step) => !/^\s*['"]/.test(step.text))
         //We got all the steps we need so we could make completions from them
             .map((step) => {
+                const bestDocumentation = this.getBestDocumentationForStepText(
+                    step.text,
+                    step.documentation
+                );
                 return {
                     label: step.text,
                     kind: CompletionItemKind.Snippet,
                     data: step.id,
-                    documentation: step.documentation,
+                    documentation: bestDocumentation,
                     sortText: getSortPrefix(step.count, 5) + '_' + step.text,
                     insertText: this.getCompletionInsertText(
                         step.text,
                         stepPart,
                         step.pureText,
-                        step.documentation
+                        bestDocumentation
                     ),
                     insertTextFormat: InsertTextFormat.Snippet,
                 };
             });
+        const byLabel = new Map<string, CompletionItem>();
+        completionItems.forEach((item) => {
+            const key = (item.label || '').toString().trim().toLowerCase();
+            if (!key) {
+                return;
+            }
+            const existing = byLabel.get(key);
+            if (!existing) {
+                byLabel.set(key, item);
+                return;
+            }
+            const existingInsert = (existing.insertText || '').toString();
+            const candidateInsert = (item.insertText || '').toString();
+            const existingHasTable = /\r?\n\s*\|/.test(existingInsert);
+            const candidateHasTable = /\r?\n\s*\|/.test(candidateInsert);
+            if (!existingHasTable && candidateHasTable) {
+                byLabel.set(key, item);
+                return;
+            }
+            if (existingHasTable === candidateHasTable) {
+                const existingDoc = (existing.documentation || '').toString();
+                const candidateDoc = (item.documentation || '').toString();
+                const existingScore = existingInsert.length + existingDoc.length;
+                const candidateScore = candidateInsert.length + candidateDoc.length;
+                if (candidateScore > existingScore) {
+                    byLabel.set(key, item);
+                }
+            }
+        });
+        const res = Array.from(byLabel.values());
         return res.length ? res : null;
     }
 
@@ -1164,3 +1264,5 @@ export default class StepsHandler {
         return item;
     }
 }
+
+

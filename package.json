@@ -90,6 +90,10 @@
       {
         "command": "cucumberautocomplete.vaLibrary.insertStep",
         "title": "VA Библиотека: Вставить шаг"
+      },
+      {
+        "command": "cucumberautocomplete.vaLibrary.showStepDetails",
+        "title": "VA Библиотека: Открыть описание шага"
       }
     ],
     "viewsContainers": {
@@ -112,9 +116,9 @@
     "menus": {
       "view/item/context": [
         {
-          "command": "cucumberautocomplete.vaLibrary.insertStep",
+          "command": "cucumberautocomplete.vaLibrary.showStepDetails",
           "when": "view == cucumberautocomplete.vaLibrary && viewItem == vaLibraryStep",
-          "group": "inline@1"
+          "group": "navigation@1"
         }
       ]
     },
