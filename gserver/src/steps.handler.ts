@@ -83,6 +83,7 @@ export default class StepsHandler {
     elementsHash: { [step: string]: boolean } = {};
 
     elemenstCountHash: StepsCountHash = {};
+    bestDocumentationByNormalizedText = new Map<string, string>();
 
     settings: Settings;
 
@@ -836,6 +837,7 @@ export default class StepsHandler {
 
     populate(root: string, stepsPathes: StepSettings) {
         this.elementsHash = {};
+        this.bestDocumentationByNormalizedText.clear();
         this.elements = stepsPathes
             .reduce(
                 (files, path) =>
@@ -880,6 +882,8 @@ export default class StepsHandler {
                 this.elementsHash[step.id] = true;
             }
         });
+
+        this.rebuildBestDocumentationIndex();
     }
 
     pickBetterDocumentation(currentDoc: string, candidateDoc: string) {
@@ -907,12 +911,22 @@ export default class StepsHandler {
 
     getBestDocumentationForStepText(stepText: string, currentDoc: string) {
         const normalized = this.normalizeStepTextForMerge(stepText);
-        return this.elements.reduce((bestDoc, el) => {
-            if (this.normalizeStepTextForMerge(el.text) !== normalized) {
-                return bestDoc;
-            }
-            return this.pickBetterDocumentation(bestDoc, el.documentation);
-        }, currentDoc || '');
+        return this.pickBetterDocumentation(
+            currentDoc || '',
+            this.bestDocumentationByNormalizedText.get(normalized) || ''
+        );
+    }
+
+    rebuildBestDocumentationIndex() {
+        this.bestDocumentationByNormalizedText.clear();
+        this.elements.forEach((el) => {
+            const key = this.normalizeStepTextForMerge(el.text);
+            const prev = this.bestDocumentationByNormalizedText.get(key) || '';
+            this.bestDocumentationByNormalizedText.set(
+                key,
+                this.pickBetterDocumentation(prev, el.documentation)
+            );
+        });
     }
 
     getExternalJsonSteps(root: string) {
