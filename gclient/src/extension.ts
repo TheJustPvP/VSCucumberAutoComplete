@@ -411,6 +411,12 @@ export function activate(context: ExtensionContext) {
             if (isApplyingExportState) {
                 return;
             }
+            if (!workspace.workspaceFolders?.length) {
+                window.showWarningMessage(
+                    'Режим Export Scenarios недоступен без открытой папки проекта. Если вы открыли только один `.feature`-файл, откройте весь репозиторий в VS Code (Файл -> Открыть папку).'
+                );
+                return;
+            }
             isApplyingExportState = true;
             try {
                 const current = exportScenariosEnabled;
