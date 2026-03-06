@@ -5,22 +5,17 @@
   "patterns": [
     {
       "contentName": "meta.embedded.block.json",
-      "begin": "(json|JSON)\\s*$",
-      "end": "(?<=\"\"\")",
+      "begin": "^\\s*(\"\"\")\\s*(json|JSON)\\s*$",
+      "beginCaptures": {
+        "1": { "name": "string.quoted.double.start" },
+        "2": { "name": "entity.name.tag.language.json" }
+      },
+      "end": "^\\s*(\"\"\")\\s*$",
+      "endCaptures": {
+        "1": { "name": "string.quoted.double.end" }
+      },
       "patterns": [
-        {
-          "begin": "^\\s*(\"\"\")$",
-          "beginCaptures": {
-            "1": { "name": "string.quoted.double.start" }
-          },
-          "end": "^\\s*(\"\"\")",
-          "endCaptures": {
-            "1": { "name": "string.quoted.double.end" }
-          },
-          "patterns": [
-            { "include": "source.json" }
-          ]
-        }
+        { "include": "source.json" }
       ]
     }
   ]
