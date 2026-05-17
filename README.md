@@ -26,7 +26,7 @@
 - Строгий режим: показывать только шаги, объявленные через соответствующее ключевое слово (`Когда`, `Тогда` и т.д.)
 
 ### Библиотека шагов VA (боковая панель)
-Просмотр известных шагов Vanessa Automation прямо внутри VS Code без переключения в браузер или документацию.
+Просмотр известных шагов Vanessa Automation прямо внутри VS Code без переключения в менеджер тестирования.
 
 **Как использовать:**
 1. Экспортируйте шаги из 1С в JSON с помощью шаблона `tools/1c/export_va_steps_json.bsl`
@@ -72,28 +72,6 @@
 Сценарии с тегом `@ExportScenarios` из `.feature` файлов рабочего пространства становятся доступны как подсказки-шаги в других `.feature` файлах.
 
 Переключить: кнопка в строке состояния `Export Scenarios: On/Off` или команда `Cucumber: Toggle Export Scenarios`.
-
----
-
-## Быстрый старт
-
-1. Установите расширение из `.vsix` или через marketplace
-2. Откройте проект в VS Code
-3. Создайте `.vscode/settings.json` (если нет) и добавьте пути к шагам:
-
-```json
-{
-    "cucumberautocomplete.steps": [
-        "../vanessa-automation/features/Libraries/**/Forms/Форма/Ext/Form/Module.bsl"
-    ],
-    "editor.quickSuggestions": {
-        "strings": true
-    }
-}
-```
-
-4. Перезагрузите окно (`Ctrl+Shift+P` → `Developer: Reload Window`)
-5. Откройте любой `.feature` файл — автодополнение и подсветка активны
 
 ---
 
