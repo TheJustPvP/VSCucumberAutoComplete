@@ -23,6 +23,7 @@ import {
     TransportKind,
 } from 'vscode-languageclient/node';
 import { activateVALibrary } from './vaLibrary';
+import { registerGherkinTableEditor } from './gherkinTableEditor';
 
 type ExportScenario = {
     title: string;
@@ -540,6 +541,7 @@ export function activate(context: ExtensionContext) {
     );
 
     context.subscriptions.push(...activateVALibrary(context));
+    context.subscriptions.push(...registerGherkinTableEditor(context));
 }
 
 export function deactivate(): Thenable<void> | undefined {

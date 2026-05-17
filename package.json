@@ -94,6 +94,26 @@
       {
         "command": "cucumberautocompletevaedition.vaLibrary.showStepDetails",
         "title": "VA Библиотека: Открыть описание шага"
+      },
+      {
+        "command": "cucumberautocompletevaedition.editGherkinTable",
+        "title": "Gherkin: Редактировать таблицу"
+      },
+      {
+        "command": "cucumberautocompletevaedition.formatGherkinTable",
+        "title": "Gherkin: Выровнять таблицу под курсором"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "cucumberautocompletevaedition.editGherkinTable",
+        "key": "ctrl+shift+t",
+        "when": "editorTextFocus && editorLangId == feature"
+      },
+      {
+        "command": "cucumberautocompletevaedition.formatGherkinTable",
+        "key": "ctrl+alt+t",
+        "when": "editorTextFocus && editorLangId == feature"
       }
     ],
     "viewsContainers": {
@@ -119,6 +139,18 @@
           "command": "cucumberautocompletevaedition.vaLibrary.showStepDetails",
           "when": "view == cucumberautocompletevaedition.vaLibrary && viewItem == vaLibraryStep",
           "group": "navigation@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "cucumberautocompletevaedition.editGherkinTable",
+          "when": "editorLangId == feature",
+          "group": "gherkin@1"
+        },
+        {
+          "command": "cucumberautocompletevaedition.formatGherkinTable",
+          "when": "editorLangId == feature",
+          "group": "gherkin@2"
         }
       ]
     },
