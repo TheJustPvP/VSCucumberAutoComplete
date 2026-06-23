@@ -56,7 +56,7 @@ function renderHtml(
     table: GherkinTable
 ): string {
     const csp = [
-        `default-src 'none'`,
+        'default-src \'none\'',
         `style-src ${webview.cspSource} 'unsafe-inline'`,
         `script-src 'nonce-${nonce}'`,
         `font-src ${webview.cspSource}`,
