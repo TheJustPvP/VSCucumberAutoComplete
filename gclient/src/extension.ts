@@ -375,6 +375,9 @@ export function activate(context: ExtensionContext) {
         if (!target || target.document.languageId !== 'feature' || !exportScenariosEnabled) {
             return;
         }
+        if (target.document.uri.scheme !== 'file' || isDiffDocument(target.document.uri)) {
+            return;
+        }
 
         const selectedLine = target.selection.active.line;
         const found =
