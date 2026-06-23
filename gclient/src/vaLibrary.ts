@@ -551,8 +551,8 @@ class VALibraryProvider implements TreeDataProvider<LibraryNode> {
                 const rawPath = (s.path || s.section || s[RU_STEP_PATH] || '').trim();
                 const path = rawPath
                     ? rawPath
-                          .replace(/\s*\.\s*/g, '/')
-                          .replace(/\\/g, '/')
+                        .replace(/\s*\.\s*/g, '/')
+                        .replace(/\\/g, '/')
                     : undefined;
 
                 return {

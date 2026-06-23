@@ -355,8 +355,9 @@ describe('validate', () => {
   it('should return an diagnostic for lines beggining with But', () => {
     expect(s.validate('But I do something else', 1, '')).not.toBeNull();
   });
-  it('should return an diagnostic for lines beggining with *', () => {
-    expect(s.validate('* I do something else', 1, '')).not.toBeNull();
+  it('should skip validation for lines beggining with * (VA section marker)', () => {
+    // In VA Edition, lines starting with * are visual section markers and are not validated
+    expect(s.validate('* I do something else', 1, '')).toBeNull();
   });
   it('should correctly handle outline steps', () => {
     const outlineFeature = getFileContent(

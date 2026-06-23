@@ -15,6 +15,7 @@ import {
     Hover,
     MarkdownString,
     languages,
+    TabInputTextDiff,
 } from 'vscode';
 import {
     LanguageClient,
@@ -206,9 +207,28 @@ function findExportScenarioByStepPart(stepPart: string) {
     return undefined;
 }
 
+function isDiffDocument(uri: Uri): boolean {
+    for (const group of window.tabGroups.all) {
+        for (const tab of group.tabs) {
+            const input = tab.input;
+            if (
+                input instanceof TabInputTextDiff &&
+                (input.original.toString() === uri.toString() ||
+                    input.modified.toString() === uri.toString())
+            ) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 function updateEditorExportDecorations(editor?: TextEditor) {
     const target = editor || window.activeTextEditor;
     if (!target || target.document.languageId !== 'feature') {
+        return;
+    }
+    if (target.document.uri.scheme !== 'file' || isDiffDocument(target.document.uri)) {
         return;
     }
 
@@ -465,7 +485,12 @@ export function activate(context: ExtensionContext) {
 
     const selectionSub = window.onDidChangeTextEditorSelection(async (e) => {
         const version = previewSessionVersion;
-        if (!exportScenariosEnabled || e.textEditor.document.languageId !== 'feature') {
+        if (
+            !exportScenariosEnabled ||
+            e.textEditor.document.languageId !== 'feature' ||
+            e.textEditor.document.uri.scheme !== 'file' ||
+            isDiffDocument(e.textEditor.document.uri)
+        ) {
             return;
         }
         const lineIndex = e.selections[0]?.active.line ?? -1;
